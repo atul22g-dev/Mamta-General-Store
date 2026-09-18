@@ -9,8 +9,17 @@ export type ThemedViewProps = ViewProps & {
   type?: ThemeColor;
 };
 
+/**
+ * Layout view. Transparent by default — pass `type` to paint a themed
+ * surface (e.g. `type="surface"`, `type="background"` on screen roots).
+ */
 export function ThemedView({ style, lightColor, darkColor, type, ...otherProps }: ThemedViewProps) {
   const theme = useTheme();
 
-  return <View style={[{ backgroundColor: theme[type ?? 'background'] }, style]} {...otherProps} />;
+  return (
+    <View
+      style={[type ? { backgroundColor: theme[type] } : undefined, style]}
+      {...otherProps}
+    />
+  );
 }

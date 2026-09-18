@@ -1,8 +1,7 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Spacing, Typography, Radius } from '@/constants';
 
 type SectionHeaderProps = {
   title: string;
@@ -16,16 +15,16 @@ type SectionHeaderProps = {
 export function SectionHeader({ title, subtitle, action }: SectionHeaderProps) {
   return (
     <Pressable style={styles.container} disabled={!action}>
-      <ThemedView style={styles.textContainer}>
-        <ThemedText type="subtitle" style={styles.title}>
+      <View style={styles.textContainer}>
+        <ThemedText type="h2" style={styles.title}>
           {title}
         </ThemedText>
         {subtitle && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
+          <ThemedText type="bodySmall" themeColor="textSecondary" style={styles.subtitle}>
             {subtitle}
           </ThemedText>
         )}
-      </ThemedView>
+      </View>
       {action && (
         <Pressable onPress={action.onPress} style={styles.actionButton}>
           <ThemedText type="link">{action.label}</ThemedText>
@@ -39,24 +38,20 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: Spacing.three,
+    alignItems: 'center',
+    marginBottom: Spacing.two,
     gap: Spacing.three,
   },
   textContainer: {
     flex: 1,
   },
-  title: {
-    fontSize: 24,
-    lineHeight: 32,
-  },
+  title: Typography.h3,
   subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: Spacing.one,
+    marginTop: Spacing.one / 2,
   },
   actionButton: {
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.two,
+    borderRadius: Radius.sm,
   },
 });

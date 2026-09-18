@@ -1,79 +1,69 @@
-import { StyleSheet, ViewProps } from 'react-native';
+import { StyleSheet, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 
-import { ThemedView } from '@/components/themed-view';
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Spacing, Radius, Shadows } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
 
-type CardProps = ViewProps & {
+type CardPadding = 'none' | 'compact' | 'normal' | 'roomy';
+
+type CardProps = {
+  children?: React.ReactNode;
+  onPress?: () => void;
   elevated?: boolean;
-  title?: string;
-  subtitle?: string;
+  padding?: CardPadding;
+  accessibilityLabel?: string;
+  style?: StyleProp<ViewStyle>;
 };
 
+const PADDING: Record<CardPadding, number> = {
+  none: 0,
+  compact: Spacing.three,
+  normal: Spacing.four,
+  roomy: Spacing.five,
+};
+
+/**
+ * Surface container. Pass `onPress` for an interactive card with
+ * press feedback; otherwise it renders as a static view.
+ */
 export function Card({
-  style,
-  elevated = true,
-  title,
-  subtitle,
   children,
-  ...props
+  onPress,
+  elevated = true,
+  padding = 'normal',
+  accessibilityLabel,
+  style,
 }: CardProps) {
+  const theme = useTheme();
 
   return (
-    <ThemedView
-      type="backgroundElement"
-      style={[
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [
         styles.card,
-        elevated && {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 3,
-          elevation: 2,
+        {
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
+          padding: PADDING[padding],
         },
+        elevated && Shadows.md,
+        onPress && pressed && styles.pressed,
         style,
-      ]}
-      {...props}>
-      {(title || subtitle) && (
-        <ThemedView style={styles.header}>
-          {title && (
-            <ThemedText type="smallBold" style={styles.title}>
-              {title}
-            </ThemedText>
-          )}
-          {subtitle && (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
-              {subtitle}
-            </ThemedText>
-          )}
-        </ThemedView>
-      )}
-      {children && <ThemedView style={styles.body}>{children}</ThemedView>}
-    </ThemedView>
+      ]}>
+      {children}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Spacing.three,
-    padding: Spacing.four,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.05)',
-    overflow: 'hidden',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
   },
-  header: {
-    marginBottom: Spacing.two,
-    gap: Spacing.one,
-  },
-  title: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  body: {
-    gap: Spacing.two,
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
 });

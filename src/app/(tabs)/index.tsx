@@ -1,75 +1,120 @@
-import { SafeAreaView, ScrollView, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
 
-import { AnimatedIcon } from '@/components/animated-icon';
+import { Icon } from '@/components/ui/icon';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { Card } from '@/components/ui/card';
-import { SectionHeader } from '@/components/ui/section-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, WebTopBarInset, MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
+  const theme = useTheme();
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView
+        <Animated.ScrollView
+          entering={FadeIn.duration(400)}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
-          
-          <ThemedView style={styles.header}>
-            <ThemedText type="title" style={styles.brand}>
-              Mamta General Store
-            </ThemedText>
-            <ThemedText type="default" themeColor="textSecondary" style={styles.greeting}>
-              Welcome back 👋
-            </ThemedText>
-          </ThemedView>
 
-          <ThemedView style={styles.findProductCard}>
-            <ThemedView style={styles.findProductContent}>
-              <ThemedText type="subtitle" style={styles.findProductTitle}>
-                Find Product
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.findProductSubtitle}>
-                Take a photo to check price
-              </ThemedText>
-            </ThemedView>
-            <AnimatedIcon />
-          </ThemedView>
+          {/* Greeting */}
+          <View style={styles.header}>
+            <View style={styles.headerRow}>
+              <View style={styles.avatar}>
+                <ThemedText type="h3" style={{ color: theme.white }}>
+                  M
+                </ThemedText>
+              </View>
+              <View style={styles.headerText}>
+                <ThemedText type="bodySmall" themeColor="textSecondary">
+                  Good day 👋
+                </ThemedText>
+                <ThemedText type="h2" style={styles.brand}>
+                  Mamta General Store
+                </ThemedText>
+              </View>
+            </View>
+          </View>
 
-          <ThemedView style={styles.shortcuts}>
-            <Card style={styles.shortcutCard}>
-              <ThemedText type="smallBold" style={styles.shortcutTitle}>
-                Add Product
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.shortcutSubtitle}>
-                Manage inventory
-              </ThemedText>
+          {/* Dominant Find Product CTA */}
+          <Animated.View entering={FadeInDown.duration(450).delay(80)}>
+            <Card
+              onPress={() => {}}
+              accessibilityLabel="Find Product — take a photo to check the price"
+              style={[
+                styles.heroCard,
+                {
+                  borderRadius: Radius.xl,
+                  borderColor: 'transparent',
+                  experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
+                },
+              ]}>
+              <View style={styles.heroContent}>
+                <ThemedText type="overline" style={styles.heroOverline}>
+                  Scan to price
+                </ThemedText>
+                <ThemedText type="h1" style={styles.heroTitle}>
+                  Find Product
+                </ThemedText>
+              </View>
+              <View style={[styles.heroIcon, { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
+                <Icon name="camera" size={30} color={theme.white} />
+              </View>
             </Card>
-            <Card style={styles.shortcutCard}>
-              <ThemedText type="smallBold" style={styles.shortcutTitle}>
-                Products
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.shortcutSubtitle}>
-                Browse catalog
-              </ThemedText>
-            </Card>
-          </ThemedView>
+          </Animated.View>
 
-          <SectionHeader
-            title="Recent Products"
-            subtitle="Your recently looked up items"
-          />
-          
-          <ThemedView style={styles.emptyState}>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-              No recent products yet
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyHint}>
-              Start by finding a product above
-            </ThemedText>
-          </ThemedView>
+          {/* Secondary quick actions */}
+          <View style={styles.shortcuts}>
+            <Animated.View entering={FadeInUp.duration(350).delay(140)} style={styles.shortcutFlex}>
+              <Card onPress={() => {}} padding="compact" style={styles.shortcutCard}>
+                <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="add-circle" size={22} color={theme.accent} />
+                </View>
+                <ThemedText type="smallBold" style={styles.shortcutTitle}>
+                  Add Product
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  Manage inventory
+                </ThemedText>
+              </Card>
+            </Animated.View>
+            <Animated.View entering={FadeInUp.duration(350).delay(210)} style={styles.shortcutFlex}>
+              <Card onPress={() => {}} padding="compact" style={styles.shortcutCard}>
+                <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="grid" size={22} color={theme.accent} />
+                </View>
+                <ThemedText type="smallBold" style={styles.shortcutTitle}>
+                  Catalog
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  Browse all items
+                </ThemedText>
+              </Card>
+            </Animated.View>
+          </View>
 
-        </ScrollView>
+          {/* Recent products */}
+          <View style={styles.sectionHeader}>
+            <ThemedText type="h3">Recent Products</ThemedText>
+            <ThemedText type="caption" themeColor="textSecondary">
+              Your recently looked up items
+            </ThemedText>
+          </View>
+
+          <Card padding="none" elevated={false} style={styles.emptyCard}>
+            <View style={[styles.emptyIcon, { backgroundColor: theme.accentSoft }]}>
+              <Icon name="cube-outline" size={24} color={theme.accent} />
+            </View>
+            <ThemedText type="h3">No recent products yet</ThemedText>
+            <ThemedText type="bodySmall" themeColor="textSecondary" style={styles.emptyText}>
+              Start by finding a product above to see your history here
+            </ThemedText>
+          </Card>
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -85,80 +130,100 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.four,
+    paddingTop: WebTopBarInset,
     paddingBottom: BottomTabInset + Spacing.four,
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     width: '100%',
   },
   header: {
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.five,
-    gap: Spacing.one,
+    paddingBottom: Spacing.four,
   },
-  brand: {
-    fontSize: 28,
-    lineHeight: 36,
-    fontWeight: '700',
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
   },
-  greeting: {
-    fontSize: 16,
-    lineHeight: 24,
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    experimental_backgroundImage: `linear-gradient(135deg, #2563EB, #EA580C)`,
   },
-  findProductCard: {
-    backgroundColor: '#208AEF',
-    borderRadius: Spacing.four,
+  headerText: {
+    gap: Spacing.one / 2,
+  },
+  brand: Typography.h2,
+  heroCard: {
     padding: Spacing.five,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 120,
-    marginBottom: Spacing.four,
+    gap: Spacing.four,
+    boxShadow: '0 12px 24px 0 rgba(37, 99, 235, 0.25)',
   },
-  findProductContent: {
+  heroContent: {
     flex: 1,
     gap: Spacing.one,
   },
-  findProductTitle: {
-    color: '#ffffff',
-    fontSize: 22,
-    lineHeight: 30,
-    fontWeight: '700',
-  },
-  findProductSubtitle: {
+  heroOverline: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
-    lineHeight: 20,
+  },
+  heroTitle: {
+    color: '#ffffff',
+  },
+  heroIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   shortcuts: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    marginBottom: Spacing.five,
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+    marginBottom: Spacing.four,
+  },
+  shortcutFlex: {
+    flex: 1,
   },
   shortcutCard: {
-    flex: 1,
-    padding: Spacing.four,
-    gap: Spacing.one,
-    minHeight: 80,
-  },
-  shortcutTitle: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  shortcutSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: Spacing.six,
     gap: Spacing.two,
   },
-  emptyText: {
-    fontSize: 15,
-    lineHeight: 22,
+  shortcutIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyHint: {
+  shortcutTitle: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  sectionHeader: {
+    gap: Spacing.one / 2,
+    marginBottom: Spacing.two,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    paddingVertical: Spacing.five,
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+    borderStyle: 'dashed',
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    textAlign: 'center',
+    maxWidth: 280,
   },
 });
