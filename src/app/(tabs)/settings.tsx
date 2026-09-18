@@ -8,7 +8,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 export default function SettingsScreen() {
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.content}>
           <ThemedText type="subtitle" style={styles.title}>
             Settings
