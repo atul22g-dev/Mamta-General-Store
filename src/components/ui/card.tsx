@@ -1,7 +1,9 @@
-import { StyleSheet, Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+
+const isWeb = Platform.OS === 'web';
 
 type CardPadding = 'none' | 'compact' | 'normal' | 'roomy';
 
@@ -41,7 +43,7 @@ export function Card({
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         styles.card,
         {
           backgroundColor: theme.surface,
@@ -49,6 +51,14 @@ export function Card({
           padding: PADDING[padding],
         },
         elevated && Shadows.md,
+        onPress &&
+          isWeb && {
+            cursor: 'pointer' as const,
+            transitionProperty: 'box-shadow, transform, border-color',
+            transitionDuration: '180ms',
+          },
+        onPress && hovered && !pressed && Shadows.lg,
+        onPress && hovered && !pressed && { borderColor: theme.textTertiary + '55' },
         onPress && pressed && styles.pressed,
         style,
       ]}>

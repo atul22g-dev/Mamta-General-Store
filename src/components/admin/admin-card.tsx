@@ -1,7 +1,6 @@
-import { StyleSheet, View, type ViewProps } from 'react-native';
+import { Pressable, StyleSheet, View, type ViewProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Spacing, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -9,6 +8,7 @@ type AdminCardProps = ViewProps & {
   title?: string;
   description?: string;
   status?: 'active' | 'pending' | 'inactive';
+  onPress?: () => void;
 };
 
 export function AdminCard({
@@ -16,6 +16,7 @@ export function AdminCard({
   title,
   description,
   status = 'pending',
+  onPress,
   ...props
 }: AdminCardProps) {
   const theme = useTheme();
@@ -35,9 +36,16 @@ export function AdminCard({
         : theme.surfaceSecondary;
 
   return (
-    <ThemedView
-      type="surface"
-      style={[styles.card, { borderColor: theme.border }, style]}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        onPress && pressed && styles.pressed,
+        style,
+      ]}
       {...props}>
       <View style={styles.content}>
         <View style={styles.textContainer}>
@@ -57,7 +65,7 @@ export function AdminCard({
           </ThemedText>
         </View>
       </View>
-    </ThemedView>
+    </Pressable>
   );
 }
 
@@ -101,5 +109,9 @@ const styles = StyleSheet.create({
   },
   statusText: {
     textTransform: 'capitalize',
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
 });

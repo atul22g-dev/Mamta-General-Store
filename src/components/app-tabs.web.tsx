@@ -1,3 +1,4 @@
+import { Platform, Pressable, View, StyleSheet } from 'react-native';
 import {
   Tabs,
   TabList,
@@ -6,13 +7,14 @@ import {
   TabTriggerSlotProps,
   TabListProps,
 } from 'expo-router/ui';
-import { Pressable, View, StyleSheet } from 'react-native';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { MaxContentWidth, Spacing, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+const isWeb = Platform.OS === 'web';
 
 const TAB_ITEMS = [
   { name: 'home', href: '/', label: 'Home', icon: 'home-outline' as IconName, activeIcon: 'home' as IconName },
@@ -49,12 +51,19 @@ export function TabButton({
   const theme = useTheme();
 
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
+    <Pressable
+      {...props}
+      style={({ pressed, hovered }) => [
+        isWeb && hovered && !isFocused && { backgroundColor: theme.text + '0A' },
+        pressed && styles.pressed,
+      ]}>
       <ThemedView
         style={[
           styles.tabButtonView,
+          isWeb && { transitionProperty: 'background-color', transitionDuration: '150ms' },
           {
             backgroundColor: isFocused ? theme.accentSoft : 'transparent',
+            borderRadius: Radius.full,
           },
         ]}>
         <Icon
@@ -78,8 +87,22 @@ export function CustomTabList(props: TabListProps) {
   return (
     <View {...props} style={styles.tabListContainer}>
       <ThemedView
-        type="surface"
-        style={[styles.innerContainer, { borderColor: theme.border }]}>
+        style={[
+          styles.innerContainer,
+          {
+            backgroundColor: theme.surface + (isWeb ? 'D9' : ''),
+            borderColor: theme.border,
+          },
+          isWeb && {
+            backdropFilter: 'saturate(180%) blur(20px)',
+          },
+        ]}>
+        {/* Brand mark */}
+        <View style={[styles.logoMark, { experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`, backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})` }]}>
+          <ThemedText type="smallBold" style={{ color: theme.white, fontSize: 12 }}>
+            M
+          </ThemedText>
+        </View>
         <ThemedText type="smallBold" style={styles.brandText}>
           Mamta General Store
         </ThemedText>
@@ -109,7 +132,15 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     maxWidth: MaxContentWidth,
     borderWidth: 1,
-    boxShadow: '0 8px 24px 0 rgba(15, 23, 42, 0.08)',
+    boxShadow: '0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 8px 24px 0 rgba(15, 23, 42, 0.09)',
+  },
+  logoMark: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -Spacing.one,
   },
   brandText: {
     marginRight: 'auto',
@@ -123,6 +154,5 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Radius.full,
   },
 });

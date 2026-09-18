@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
 
 import { Icon } from '@/components/ui/icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
   const theme = useTheme();
+  const router = useRouter();
 
   return (
     <ThemedView style={styles.container}>
@@ -43,7 +45,7 @@ export default function HomeScreen() {
           {/* Dominant Find Product CTA */}
           <Animated.View entering={FadeInDown.duration(450).delay(80)}>
             <Card
-              onPress={() => {}}
+              onPress={() => router.push('/find-product/camera')}
               accessibilityLabel="Find Product — take a photo to check the price"
               style={[
                 styles.heroCard,
@@ -51,6 +53,7 @@ export default function HomeScreen() {
                   borderRadius: Radius.xl,
                   borderColor: 'transparent',
                   experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
+                  backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
                 },
               ]}>
               <View style={styles.heroContent}>
@@ -70,7 +73,7 @@ export default function HomeScreen() {
           {/* Secondary quick actions */}
           <View style={styles.shortcuts}>
             <Animated.View entering={FadeInUp.duration(350).delay(140)} style={styles.shortcutFlex}>
-              <Card onPress={() => {}} padding="compact" style={styles.shortcutCard}>
+              <Card onPress={() => router.push('/admin/products/add')} padding="compact" style={styles.shortcutCard}>
                 <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
                   <Icon name="add-circle" size={22} color={theme.accent} />
                 </View>
@@ -83,7 +86,7 @@ export default function HomeScreen() {
               </Card>
             </Animated.View>
             <Animated.View entering={FadeInUp.duration(350).delay(210)} style={styles.shortcutFlex}>
-              <Card onPress={() => {}} padding="compact" style={styles.shortcutCard}>
+              <Card onPress={() => router.push('/(tabs)/products')} padding="compact" style={styles.shortcutCard}>
                 <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
                   <Icon name="grid" size={22} color={theme.accent} />
                 </View>
@@ -151,6 +154,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     experimental_backgroundImage: `linear-gradient(135deg, #2563EB, #EA580C)`,
+    backgroundImage: `linear-gradient(135deg, #2563EB, #EA580C)`,
   },
   headerText: {
     gap: Spacing.one / 2,

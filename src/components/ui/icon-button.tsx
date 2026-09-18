@@ -1,8 +1,10 @@
 import { type ReactNode } from 'react';
-import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+
+const isWeb = Platform.OS === 'web';
 
 type IconButtonSize = 'sm' | 'md' | 'lg';
 type IconButtonVariant = 'primary' | 'secondary' | 'ghost' | 'cta';
@@ -51,6 +53,14 @@ export function IconButton({
           ? theme.surface
           : 'transparent';
 
+  const hoverBackgroundColor = disabled
+    ? undefined
+    : variant === 'primary'
+      ? theme.accentDark
+      : variant === 'cta'
+        ? theme.ctaDark
+        : undefined;
+
   return (
     <Pressable
       onPress={onPress}
@@ -59,7 +69,7 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       hitSlop={size === 'sm' ? 4 : 0}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         styles.button,
         {
           width: box,
@@ -68,6 +78,14 @@ export function IconButton({
         },
         variant === 'secondary' && { borderWidth: 1, borderColor: theme.border },
         variant !== 'ghost' && !disabled && Shadows.sm,
+        isWeb &&
+          !disabled && {
+            cursor: 'pointer' as const,
+            transitionProperty: 'background-color, box-shadow, transform, opacity',
+            transitionDuration: '150ms',
+          },
+        isWeb && hovered && !pressed && hoverBackgroundColor && { backgroundColor: hoverBackgroundColor },
+        isWeb && hovered && variant === 'secondary' && { borderColor: theme.textTertiary + '55' },
         pressed && !disabled && styles.pressed,
         style,
       ]}>

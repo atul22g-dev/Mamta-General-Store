@@ -1,9 +1,11 @@
 import { type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+
+const isWeb = Platform.OS === 'web';
 
 type ButtonVariant = 'primary' | 'cta' | 'secondary' | 'tertiary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -63,6 +65,15 @@ export function Button({
           ? theme.text
           : theme.accent;
 
+  // Richer hover tint for solid variants on web.
+  const hoverBackgroundColor = disabled
+    ? undefined
+    : variant === 'primary'
+      ? theme.accentDark
+      : variant === 'cta'
+        ? theme.ctaDark
+        : undefined;
+
   const sizeStyle =
     size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md;
 
@@ -73,7 +84,7 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled, busy: false }}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }) => [
         styles.button,
         sizeStyle,
         { backgroundColor },
@@ -82,6 +93,14 @@ export function Button({
           borderColor: theme.border,
         },
         variant !== 'ghost' && !disabled && Shadows.sm,
+        isWeb &&
+          !disabled && {
+            cursor: 'pointer' as const,
+            transitionProperty: 'background-color, box-shadow, transform, opacity',
+            transitionDuration: '150ms',
+          },
+        isWeb && hovered && !pressed && hoverBackgroundColor && { backgroundColor: hoverBackgroundColor },
+        isWeb && hovered && !disabled && Shadows.md,
         block && styles.block,
         pressed && !disabled && styles.pressed,
         style,

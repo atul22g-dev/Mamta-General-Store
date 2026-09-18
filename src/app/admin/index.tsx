@@ -1,10 +1,12 @@
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
 
 import { Icon, type IconName } from '@/components/ui/icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AdminCard } from '@/components/admin/admin-card';
+import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
@@ -24,6 +26,7 @@ const PREVIEW_ITEMS = [
 
 export default function AdminScreen() {
   const theme = useTheme();
+  const router = useRouter();
 
   return (
     <ThemedView style={styles.container}>
@@ -40,6 +43,20 @@ export default function AdminScreen() {
             <ThemedText type="bodySmall" themeColor="textSecondary">
               Manage products and store data
             </ThemedText>
+          </View>
+
+          {/* Quick admin actions */}
+          <View style={styles.actions}>
+            <Button
+              title="Manage Products"
+              onPress={() => router.push('/admin/products')}
+              icon={<Icon name="cube-outline" size={18} color={theme.white} />}
+            />
+            <Button
+              title="Sign In"
+              onPress={() => router.push('/admin/login')}
+              variant="secondary"
+            />
           </View>
 
           {/* Stat tiles */}
@@ -136,6 +153,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   statValue: Typography.h2,
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
   list: {
     gap: Spacing.two,
   },

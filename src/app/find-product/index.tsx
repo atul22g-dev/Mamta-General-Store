@@ -1,5 +1,6 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
 
 import { Icon, type IconName } from '@/components/ui/icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ const TIPS = [
 
 export default function FindProductScreen() {
   const theme = useTheme();
+  const router = useRouter();
 
   return (
     <ThemedView style={styles.container}>
@@ -67,16 +69,21 @@ export default function FindProductScreen() {
           {/* Shutter button */}
           <View style={styles.shutterRow}>
             <View style={styles.shutterPlaceholder} />
-            <View
-              style={[
+            <Pressable
+              onPress={() => router.push('/find-product/camera')}
+              accessibilityRole="button"
+              accessibilityLabel="Capture product photo"
+              style={({ pressed }) => [
                 styles.shutter,
                 {
                   borderColor: theme.cta,
                   experimental_backgroundImage: `linear-gradient(135deg, ${theme.cta}, ${theme.cta}CC)`,
+                  backgroundImage: `linear-gradient(135deg, ${theme.cta}, ${theme.cta}CC)`,
                 },
+                pressed && styles.shutterPressed,
               ]}>
               <Icon name="camera" size={24} color={theme.white} />
-            </View>
+            </Pressable>
             <View
               style={[styles.galleryTile, { backgroundColor: theme.surfaceSecondary }]}>
               <Icon name="images" size={20} color={theme.textSecondary} />
@@ -186,6 +193,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  shutterPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
   },
   tips: {
     gap: Spacing.two,
