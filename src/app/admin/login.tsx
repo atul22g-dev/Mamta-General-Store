@@ -1,43 +1,143 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { IconButton } from '@/components/ui/icon-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/hooks/use-auth';
 
 /**
- * Admin sign-in scaffold. The form is fully composed but disabled — no
- * authentication layer exists yet, so nothing submits or validates.
+ * Admin sign-in. Real Supabase email/password auth:
+ *  - loading state disables the form while the request is in flight
+ *  - credential/network errors surface inline
+ *  - success lands on the admin dashboard (guard admits admins only)
  */
 export default function AdminLoginScreen() {
   const theme = useTheme();
+  const router = useRouter();
+  const { signIn, status, isAdmin } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canSubmit = emailIsValid && password.length >= 6 && !submitting;
+
+  // Already signed in as admin? Send them straight in.
+  if (status === 'authenticated' && isAdmin) {
+    router.replace('/admin');
+    return null;
+  }
+
+  const handleSignIn = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    const result = await signIn(email, password);
+    setSubmitting(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    router.replace('/admin');
+  };
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <Animated.View entering={FadeInDown.duration(350)} style={styles.content}>
-          <View style={[styles.iconTile, { backgroundColor: theme.accentSoft }]}>
-            <Icon name="lock-closed" size={28} color={theme.accent} />
+          {/* Brand */}
+          <View
+            style={[
+              styles.logo,
+              {
+                experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
+                backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
+              },
+            ]}>
+            <ThemedText type="h2" style={{ color: theme.white }}>
+              M
+            </ThemedText>
           </View>
-          <Badge label="Coming soon" variant="accent" />
-          <ThemedText type="h2" style={styles.title}>
-            Admin Sign In
-          </ThemedText>
-          <ThemedText type="bodySmall" themeColor="textSecondary" style={styles.description}>
-            Store-owner access only. Authentication is not implemented yet — the form is disabled
-            until then.
-          </ThemedText>
+          <View style={styles.brandText}>
+            <ThemedText type="h3">Mamta General Store</ThemedText>
+            <ThemedText type="bodySmall" themeColor="textSecondary">
+              Admin Login
+            </ThemedText>
+          </View>
 
+          {/* Form */}
           <View style={styles.form}>
-            <Input label="Email" placeholder="owner@mamtastore.in" editable={false} />
-            <Input label="Password" placeholder="••••••••" secureTextEntry editable={false} />
-            <Button title="Sign In" onPress={undefined} disabled block />
+            <Input
+              label="Email"
+              placeholder="owner@mamtastore.in"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              textContentType="emailAddress"
+              value={email}
+              editable={!submitting}
+              onChangeText={(text) => {
+                setEmail(text);
+                setError(null);
+              }}
+            />
+            <Input
+              label="Password"
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              value={password}
+              editable={!submitting}
+              onChangeText={(text) => {
+                setPassword(text);
+                setError(null);
+              }}
+              rightIcon={
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  onPress={() => setShowPassword((value) => !value)}
+                  icon={
+                    <Icon
+                      name={showPassword ? 'eye-off' : 'eye'}
+                      size={16}
+                      color={theme.textTertiary}
+                    />
+                  }
+                />
+              }
+            />
+
+            {error && (
+              <View style={[styles.errorRow, { backgroundColor: theme.errorSoft }]}>
+                <Icon name="warning" size={14} color={theme.error} />
+                <ThemedText type="caption" style={{ color: theme.error, flex: 1 }}>
+                  {error}
+                </ThemedText>
+              </View>
+            )}
+
+            <Button
+              title={submitting ? 'Signing in…' : 'Sign In'}
+              onPress={() => void handleSignIn()}
+              disabled={!canSubmit}
+              block
+            />
           </View>
         </Animated.View>
       </SafeAreaView>
@@ -60,24 +160,29 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
+    gap: Spacing.four,
   },
-  iconTile: {
-    width: 64,
-    height: 64,
-    borderRadius: Radius.lg,
+  logo: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
+    boxShadow: '0 8px 24px 0 rgba(37, 99, 235, 0.25)',
   },
-  title: {
-    textAlign: 'center',
-  },
-  description: {
-    textAlign: 'center',
+  brandText: {
+    alignItems: 'center',
+    gap: Spacing.one / 2,
   },
   form: {
     alignSelf: 'stretch',
     gap: Spacing.three,
-    marginTop: Spacing.two,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
   },
 });

@@ -12,6 +12,7 @@ export default function FindProductLayout() {
       <Stack.Screen name="camera" />
       <Stack.Screen name="preview" />
       <Stack.Screen name="searching" />
+      <Stack.Screen name="search" />
       <Stack.Screen name="result" />
     </Stack>
   );

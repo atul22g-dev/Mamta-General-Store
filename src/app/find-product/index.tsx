@@ -59,9 +59,9 @@ export default function FindProductScreen() {
               style={[styles.scanLine, { backgroundColor: theme.accent + '55' }]}
             />
             <View style={styles.viewfinderCenter}>
-              <Icon name="barcode" size={40} color={theme.textTertiary} />
+              <Icon name="camera" size={40} color={theme.textTertiary} />
               <ThemedText type="caption" themeColor="textTertiary">
-                Align the product within the frame
+                Take a product photo to find it
               </ThemedText>
             </View>
           </Animated.View>

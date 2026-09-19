@@ -1,7 +1,5 @@
 import { StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -11,42 +9,38 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
+type AccessDeniedProps = {
+  email?: string | null;
+  onSignOut?: () => void;
+};
+
 /**
- * Product detail scaffold for /admin/products/[id]. Reads the id param and
- * shows a stub summary — real data comes with the database layer.
+ * Shown to authenticated users whose profile role is not admin. Distinct
+ * from the login screen: they ARE signed in — they just lack permission.
  */
-export default function AdminProductDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
+export function AccessDenied({ email, onSignOut }: AccessDeniedProps) {
   const theme = useTheme();
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <Animated.View entering={FadeInDown.duration(350)} style={styles.content}>
-          <View style={[styles.iconTile, { backgroundColor: theme.accentSoft }]}>
-            <Icon name="cube" size={28} color={theme.accent} />
+        <View style={styles.content}>
+          <View style={[styles.iconTile, { backgroundColor: theme.errorSoft }]}>
+            <Icon name="shield" size={28} color={theme.error} />
           </View>
-          <Badge label={`Product #${id ?? '?'}`} variant="accent" />
+          <Badge label="Access denied" variant="error" />
           <ThemedText type="h2" style={styles.title}>
-            Product Details
+            Not an admin account
           </ThemedText>
           <ThemedText type="bodySmall" themeColor="textSecondary" style={styles.description}>
-            Name, category, pricing and stock for product “{id ?? '?'}” will load here once the
-            database layer is connected.
+            {email
+              ? `${email} doesn't have admin access to this store. Ask an owner to grant the admin role.`
+              : "This account doesn't have admin access to this store. Ask an owner to grant the admin role."}
           </ThemedText>
-
-          <View style={styles.actions}>
-            <Button
-              title="Edit Product"
-              onPress={() =>
-                router.push({ pathname: '/admin/products/[id]/edit', params: { id } })
-              }
-              icon={<Icon name="create" size={18} color={theme.white} />}
-            />
-            <Button title="Back" onPress={() => router.back()} variant="secondary" />
-          </View>
-        </Animated.View>
+          {onSignOut && (
+            <Button title="Sign Out" onPress={onSignOut} variant="secondary" style={styles.button} />
+          )}
+        </View>
       </SafeAreaView>
     </ThemedView>
   );
@@ -82,11 +76,7 @@ const styles = StyleSheet.create({
   description: {
     textAlign: 'center',
   },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: Spacing.two,
+  button: {
     marginTop: Spacing.two,
   },
 });

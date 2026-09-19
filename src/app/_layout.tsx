@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { AuthProvider } from '@/providers/auth-provider';
 
 /**
  * Root navigator: three branches —
@@ -14,12 +15,14 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="find-product" />
-        <Stack.Screen name="admin" />
-      </Stack>
+      <AuthProvider>
+        <AnimatedSplashOverlay />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="find-product" />
+          <Stack.Screen name="admin" />
+        </Stack>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

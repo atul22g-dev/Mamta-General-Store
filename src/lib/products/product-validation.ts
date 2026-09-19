@@ -1,0 +1,134 @@
+/**
+ * Product form validation — pure functions, no React/Supabase imports,
+ * so the rules are unit-testable in isolation.
+ */
+
+export const PRODUCT_CATEGORIES = [
+  'groceries',
+  'snacks',
+  'household',
+  'beverages',
+  'personal_care',
+  'dairy',
+  'other',
+] as const;
+
+export const PRODUCT_UNITS = ['piece', 'kg', 'gram', 'litre', 'ml', 'pack', 'dozen'] as const;
+
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
+export const CATEGORY_LABELS: Record<ProductCategory, string> = {
+  groceries: 'Groceries',
+  snacks: 'Snacks',
+  household: 'Household',
+  beverages: 'Beverages',
+  personal_care: 'Personal Care',
+  dairy: 'Dairy',
+  other: 'Other',
+};
+
+export const UNIT_LABELS: Record<ProductUnit, string> = {
+  piece: 'Piece',
+  kg: 'Kilogram',
+  gram: 'Gram',
+  litre: 'Litre',
+  ml: 'Millilitre',
+  pack: 'Pack',
+  dozen: 'Dozen',
+};
+
+export type ProductFormValues = {
+  name: string;
+  description: string;
+  category: ProductCategory | '';
+  mrp: string;
+  sellingPrice: string;
+  stock: string;
+  unit: ProductUnit;
+};
+
+export type ProductFormErrors = Partial<
+  Record<'name' | 'category' | 'mrp' | 'sellingPrice' | 'stock' | 'description', string>
+>;
+
+/** Parses a user-typed number: trims, rejects junk, allows decimals. */
+export function parseAmount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null; // digits + optional decimals only
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Parses a user-typed integer (stock). */
+export function parseInteger(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  if (!/^\d+$/.test(trimmed)) return null; // whole numbers only, no sign
+  const value = Number(trimmed);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+/**
+ * Validates the form. Rules:
+ *  - name required
+ *  - category required
+ *  - mrp required, numeric, >= 0
+ *  - selling price required, numeric, >= 0, <= mrp
+ *  - stock required-ish: blank → 0, otherwise non-negative integer
+ */
+export function validateProductForm(values: ProductFormValues): ProductFormErrors {
+  const errors: ProductFormErrors = {};
+
+  if (values.name.trim().length === 0) {
+    errors.name = 'Product name is required.';
+  } else if (values.name.trim().length > 200) {
+    errors.name = 'Product name must be 200 characters or fewer.';
+  }
+
+  if (!values.category) {
+    errors.category = 'Choose a category.';
+  }
+
+  const mrp = parseAmount(values.mrp);
+  if (values.mrp.trim() === '') {
+    errors.mrp = 'MRP is required.';
+  } else if (mrp === null) {
+    errors.mrp = 'MRP must be a number.';
+  } else if (mrp < 0) {
+    errors.mrp = 'MRP cannot be negative.';
+  }
+
+  const sellingPrice = parseAmount(values.sellingPrice);
+  if (values.sellingPrice.trim() === '') {
+    errors.sellingPrice = 'Selling price is required.';
+  } else if (sellingPrice === null) {
+    errors.sellingPrice = 'Selling price must be a number.';
+  } else if (sellingPrice < 0) {
+    errors.sellingPrice = 'Selling price cannot be negative.';
+  } else if (mrp !== null && sellingPrice > mrp) {
+    errors.sellingPrice = 'Selling price cannot exceed MRP.';
+  }
+
+  if (values.stock.trim() === '') {
+    // Blank stock means zero — allowed.
+  } else {
+    const stock = parseInteger(values.stock);
+    if (stock === null) {
+      errors.stock = 'Stock must be a whole number.';
+    } else if (stock < 0) {
+      errors.stock = 'Stock cannot be negative.';
+    }
+  }
+
+  if (values.description.length > 2000) {
+    errors.description = 'Description must be 2000 characters or fewer.';
+  }
+
+  return errors;
+}
+
+export function isFormValid(errors: ProductFormErrors): boolean {
+  return Object.keys(errors).length === 0;
+}

@@ -1,0 +1,213 @@
+import { useState } from 'react';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+
+import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
+import { Input } from '@/components/ui/input';
+import { Loading } from '@/components/ui/loading';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ProductRow } from '@/components/products/product-row';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { MaxContentWidth, Spacing } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
+import { useProductList } from '@/hooks/use-product-list';
+
+/**
+ * Admin product management screen — real catalog from Supabase with
+ * debounced search, pull-to-refresh, and an explicit delete confirmation
+ * flow. All data access lives in hooks/services, not here.
+ */
+export default function AdminProductsScreen() {
+  const router = useRouter();
+  const theme = useTheme();
+
+  const {
+    search,
+    setSearch,
+    products,
+    status,
+    errorMessage,
+    refreshing,
+    loading,
+    deletingId,
+    refresh,
+    deleteProductById,
+  } = useProductList();
+
+  // Product pending deletion (drives the confirm dialog).
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+
+    const outcome = await deleteProductById(pendingDelete.id);
+    setPendingDelete(null);
+
+    if (!outcome.ok) {
+      Alert.alert('Could not delete product', outcome.error);
+    }
+  };
+
+  const hasSearch = search.trim().length > 0;
+
+  return (
+    <ThemedView style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.flex}>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <ThemedText type="h1">Products</ThemedText>
+              <ThemedText type="bodySmall" themeColor="textSecondary">
+                Manage your store catalog
+              </ThemedText>
+            </View>
+            <Button
+              title="Add Product"
+              size="sm"
+              icon={<Icon name="add" size={18} color={theme.white} />}
+              onPress={() => router.push('/admin/products/add')}
+            />
+          </View>
+
+          {/* Search */}
+          <Input
+            placeholder="Search products…"
+            value={search}
+            onChangeText={setSearch}
+            leftIcon={<Icon name="search" size={18} color={theme.textTertiary} />}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+            autoCorrect={false}
+            accessibilityLabel="Search products"
+          />
+
+          {/* Result count */}
+          {status === 'ready' && products.length > 0 && (
+            <ThemedText type="caption" themeColor="textTertiary">
+              {products.length} {products.length === 1 ? 'product' : 'products'}
+              {hasSearch ? ' found' : ' in catalog'}
+            </ThemedText>
+          )}
+
+          {/* Body */}
+          <ScrollView
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => void refresh()}
+                tintColor={theme.accent}
+                colors={[theme.accent]}
+              />
+            }>
+            {loading && <Loading text="Loading products…" />}
+
+            {status === 'error' && (
+              <ErrorState
+                description={errorMessage ?? 'Failed to load products.'}
+                onRetry={() => void refresh()}
+              />
+            )}
+
+            {status === 'ready' && products.length === 0 && !hasSearch && (
+              <EmptyState
+                title="No products yet"
+                description="Add your first product to start building the catalog."
+                action={
+                  <Button
+                    title="Add Product"
+                    icon={<Icon name="add" size={18} color={theme.white} />}
+                    onPress={() => router.push('/admin/products/add')}
+                  />
+                }
+              />
+            )}
+
+            {status === 'ready' && products.length === 0 && hasSearch && (
+              <EmptyState
+                title="No matches"
+                description={`Nothing matches “${search.trim()}”. Try a different search.`}
+                icon={<Icon name="search" size={26} color={theme.accent} />}
+              />
+            )}
+
+            {products.map((product, index) => (
+              <ProductRow
+                key={product.id}
+                product={product}
+                index={index}
+                deleting={deletingId === product.id}
+                onPress={() =>
+                  router.push({ pathname: '/admin/products/[id]', params: { id: product.id } })
+                }
+                onEdit={() =>
+                  router.push({
+                    pathname: '/admin/products/[id]/edit',
+                    params: { id: product.id },
+                  })
+                }
+                onDelete={() => setPendingDelete({ id: product.id, name: product.name })}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        visible={pendingDelete !== null}
+        title="Delete this product?"
+        message={
+          pendingDelete
+            ? `“${pendingDelete.name}” will be permanently removed.\n\nThis action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        busy={deletingId !== null}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => !deletingId && setPendingDelete(null)}
+      />
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  headerText: {
+    flex: 1,
+    gap: Spacing.one / 2,
+  },
+  listContent: {
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.five,
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
+  },
+});

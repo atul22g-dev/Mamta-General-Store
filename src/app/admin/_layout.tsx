@@ -1,19 +1,17 @@
 import { Stack } from 'expo-router';
 
 /**
- * Admin area: login → dashboard (index) → product management
- * (list, add, detail, edit). Nested Stack keeps the Android back button
- * popping screens inside the admin flow instead of exiting the app.
+ * Admin area layout: `login` renders publicly; the `(protected)` group
+ * (nested below with its own guarding layout) wraps every privileged
+ * screen. Keeping them as sibling slots means the guard can redirect to
+ * login without ever unmounting the login screen itself.
  */
 export default function AdminLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" />
-      <Stack.Screen name="index" />
-      <Stack.Screen name="products" />
-      <Stack.Screen name="products/add" />
-      <Stack.Screen name="products/[id]" />
-      <Stack.Screen name="products/[id]/edit" />
+      <Stack.Screen name="(protected)" />
     </Stack>
   );
 }
+

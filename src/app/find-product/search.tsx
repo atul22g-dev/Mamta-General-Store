@@ -1,0 +1,316 @@
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
+import { Icon } from '@/components/ui/icon';
+import { Input } from '@/components/ui/input';
+import { SkeletonList } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
+import { IconButton } from '@/components/ui/icon-button';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
+import { useProductSearch } from '@/hooks/use-product-search';
+import { matchSession } from '@/lib/visual-match/session';
+import {
+  PRODUCT_CATEGORIES,
+  CATEGORY_LABELS,
+  UNIT_LABELS,
+  type ProductUnit,
+} from '@/lib/products/product-validation';
+import type { ProductWithImages } from '@/lib/products/product-service';
+import { formatPrice } from '@/lib/format';
+
+/** Catalog result row: image, name, unit, current selling price. */
+function SearchResultRow({
+  product,
+  onPress,
+}: {
+  product: ProductWithImages;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const firstImage = product.product_images[0]?.image_url;
+  const unitLabel = UNIT_LABELS[product.unit as ProductUnit] ?? product.unit;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${product.name}`}
+      onPress={onPress}
+      style={({ pressed, hovered }) => [
+        styles.row,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        Shadows.sm,
+        pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
+      ]}>
+      {firstImage ? (
+        <Image source={{ uri: firstImage }} style={styles.rowThumb} />
+      ) : (
+        <View style={[styles.rowThumb, styles.rowThumbFallback]}>
+          <ThemedText type="bodySmall" style={{ color: theme.accent }}>
+            {product.name.charAt(0).toUpperCase()}
+          </ThemedText>
+        </View>
+      )}
+
+      <View style={styles.rowInfo}>
+        <ThemedText type="body" numberOfLines={1}>
+          {product.name}
+        </ThemedText>
+        <ThemedText type="caption" themeColor="textTertiary">
+          {unitLabel}
+        </ThemedText>
+      </View>
+
+      {/* Current DB price — the only source, as everywhere in the flow. */}
+      <ThemedText type="h3" style={{ color: theme.accent }}>
+        {formatPrice(product.selling_price)}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+/**
+ * Manual search fallback for the find-product flow. Shown when visual
+ * matching fails or confidence is too low; selecting a product opens the
+ * same result screen with its live DB price.
+ */
+export default function FindProductSearchScreen() {
+  const router = useRouter();
+  const theme = useTheme();
+
+  const {
+    search,
+    setSearch,
+    category,
+    setCategory,
+    products,
+    status,
+    errorMessage,
+    loading,
+    refresh,
+  } = useProductSearch();
+
+  const hasQuery = search.trim().length > 0 || category !== 'all';
+  const hasResults = status === 'ready' && products.length > 0;
+
+  const handleSelect = (product: ProductWithImages) => {
+    matchSession.setManualResult(product);
+    router.push('/find-product/result');
+  };
+
+  return (
+    <ThemedView style={styles.grow}>
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <IconButton
+            icon={<Icon name="arrow-back" size={20} color={theme.text} />}
+            onPress={() => (router.canGoBack() ? router.back() : router.dismissTo('/(tabs)'))}
+            accessibilityLabel="Go back"
+            variant="ghost"
+          />
+          <View style={styles.headerText}>
+            <ThemedText type="h3">Search Products</ThemedText>
+            <ThemedText type="caption" themeColor="textTertiary">
+              Live catalog · current prices
+            </ThemedText>
+          </View>
+        </View>
+
+        {/* Search input */}
+        <View style={styles.searchWrap}>
+          <Input
+            placeholder="Search by product name…"
+            value={search}
+            onChangeText={setSearch}
+            leftIcon={<Icon name="search" size={18} color={theme.textTertiary} />}
+            clearButtonMode="while-editing"
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search products by name"
+          />
+        </View>
+
+        {/* Category chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}>
+          <Chip
+            label="All"
+            active={category === 'all'}
+            onPress={() => setCategory('all')}
+          />
+          {PRODUCT_CATEGORIES.map((cat) => (
+            <Chip
+              key={cat}
+              label={CATEGORY_LABELS[cat]}
+              active={category === cat}
+              onPress={() => setCategory(cat)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* Body */}
+        {loading && <SkeletonList count={6} style={styles.skeletonList} />}
+
+        {status === 'error' && (
+          <View style={styles.centerState}>
+            <ErrorState
+              description={errorMessage ?? 'Failed to search.'}
+              onRetry={() => void refresh()}
+            />
+          </View>
+        )}
+
+        {hasResults && (
+          <ScrollView
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled">
+            <ThemedText type="caption" themeColor="textTertiary">
+              {products.length} {products.length === 1 ? 'product' : 'products'}
+            </ThemedText>
+            {products.map((product, index) => (
+              <Animated.View
+                key={product.id}
+                entering={FadeInDown.duration(250).delay(Math.min(index, 8) * 40)}>
+                <SearchResultRow product={product} onPress={() => handleSelect(product)} />
+              </Animated.View>
+            ))}
+          </ScrollView>
+        )}
+
+        {status === 'ready' && products.length === 0 && (
+          <View style={styles.centerState}>
+            <EmptyState
+              title={hasQuery ? 'No products found' : 'Catalog is empty'}
+              description={
+                hasQuery
+                  ? 'Try a different name or category.'
+                  : 'Products added by an admin will appear here.'
+              }
+              icon={
+                <Icon name={hasQuery ? 'search' : 'cube-outline'} size={26} color={theme.accent} />
+              }
+            />
+          </View>
+        )}
+      </SafeAreaView>
+    </ThemedView>
+  );
+}
+
+/** Selectable category pill. */
+function Chip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => [
+        styles.chip,
+        {
+          backgroundColor: active ? theme.accent : theme.surface,
+          borderColor: active ? theme.accent : theme.border,
+          opacity: pressed ? 0.8 : 1,
+        },
+      ]}>
+      <ThemedText
+        type="caption"
+        style={{ color: active ? theme.white : theme.textSecondary }}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  grow: {
+    flex: 1,
+  },
+  flex: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingTop: Spacing.two,
+    gap: Spacing.one,
+  },
+  headerText: {
+    flex: 1,
+  },
+  searchWrap: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+  },
+  chip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  centerState: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  skeletonList: {
+    paddingHorizontal: Spacing.four,
+  },
+  listContent: {
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.four,
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.three,
+  },
+  rowInfo: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  rowThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(100,116,139,0.12)',
+  },
+  rowThumbFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

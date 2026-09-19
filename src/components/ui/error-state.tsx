@@ -1,4 +1,4 @@
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 
@@ -50,11 +50,19 @@ export function ErrorState({
         {description}
       </ThemedText>
       {onRetry && (
-        <View style={[styles.retry, { backgroundColor: theme.errorSoft }]}>
+        <Pressable
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel={retryLabel}
+          style={({ pressed }) => [
+            styles.retry,
+            { backgroundColor: theme.errorSoft },
+            pressed && styles.retryPressed,
+          ]}>
           <ThemedText type="smallBold" style={{ color: theme.error }}>
             {retryLabel}
           </ThemedText>
-        </View>
+        </Pressable>
       )}
     </ThemedView>
   );
@@ -89,5 +97,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
     borderRadius: Radius.full,
+  },
+  retryPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
   },
 });
