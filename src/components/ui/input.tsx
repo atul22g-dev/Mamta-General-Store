@@ -12,7 +12,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing, Radius, Shadows } from '@/constants';
+import { Spacing, Radius, Shadows, MinTouchTarget } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 type InputProps = TextInputProps & {
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: Radius.lg,
     borderWidth: 1,
-    minHeight: 52,
+    minHeight: MinTouchTarget + 4,
     paddingHorizontal: Spacing.four,
   },
   input: {

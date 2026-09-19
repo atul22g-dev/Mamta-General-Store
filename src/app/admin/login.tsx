@@ -44,7 +44,17 @@ export default function AdminLoginScreen() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
-    const result = await signIn(email, password);
+
+    // signIn returns failures as results, not throws — but an unexpected
+    // rejection (offline, crash mid-request) must still reset the button
+    // below, so it is converted to a failed result on every path.
+    let result: Awaited<ReturnType<typeof signIn>>;
+    try {
+      result = await signIn(email, password);
+    } catch {
+      result = { ok: false, error: 'Something went wrong. Please try again.' };
+    }
+
     setSubmitting(false);
 
     if (!result.ok) {
@@ -63,6 +73,7 @@ export default function AdminLoginScreen() {
             style={[
               styles.logo,
               {
+                boxShadow: `0 8px 24px 0 ${theme.accentGlow}`,
                 experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
                 backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
               },
@@ -168,7 +179,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 8px 24px 0 rgba(37, 99, 235, 0.25)',
   },
   brandText: {
     alignItems: 'center',

@@ -29,6 +29,10 @@ create table public.products (
 
 comment on table public.products is 'Store catalog. mrp = maximum retail price; selling_price <= mrp.';
 
+-- RLS is enabled at creation so the table is never exposed without it;
+-- policies are defined in 0003_rls.sql.
+alter table public.products enable row level security;
+
 -- Listing screens sort/paginate by these.
 create index products_category_idx on public.products (category);
 create index products_name_idx on public.products (name);
@@ -60,6 +64,10 @@ create table public.product_images (
 );
 
 comment on table public.product_images is 'Image URLs (Supabase Storage paths) attached to products.';
+
+-- RLS is enabled at creation so the table is never exposed without it;
+-- policies are defined in 0003_rls.sql.
+alter table public.product_images enable row level security;
 
 -- FK lookup + "images for product" queries.
 create index product_images_product_id_idx on public.product_images (product_id);

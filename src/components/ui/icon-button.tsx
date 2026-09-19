@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
-import { Radius, Shadows } from '@/constants';
+import { Radius, Shadows, MinTouchTarget, Motion } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 const isWeb = Platform.OS === 'web';
@@ -20,9 +20,28 @@ type IconButtonProps = {
 };
 
 const SIZES: Record<IconButtonSize, { box: number; icon: number }> = {
-  sm: { box: 36, icon: 14 },
-  md: { box: 44, icon: 18 },
-  lg: { box: 56, icon: 22 },
+  sm: { box: MinTouchTarget - 8, icon: 14 },
+  md: { box: MinTouchTarget, icon: 18 },
+  lg: { box: MinTouchTarget + 12, icon: 22 },
+};
+
+type ThemeTokens = ReturnType<typeof useTheme>;
+
+/** Variants and their background tokens (ghost is transparent). */
+const BACKGROUND_COLOR = {
+  primary: (t: ThemeTokens) => t.accent,
+  cta: (t: ThemeTokens) => t.cta,
+  secondary: (t: ThemeTokens) => t.surface,
+  ghost: () => 'transparent',
+} as const;
+
+/** Disabled buttons are uniform regardless of variant. */
+const DISABLED_BACKGROUND = (t: ThemeTokens) => t.surfaceSecondary;
+
+/** Variants with a richer hover tint on web. */
+const HOVER_BACKGROUND: Partial<Record<IconButtonVariant, (t: ThemeTokens) => string>> = {
+  primary: (t) => t.accentDark,
+  cta: (t) => t.ctaDark,
 };
 
 /**
@@ -43,23 +62,13 @@ export function IconButton({
 
   const { box } = SIZES[size];
 
+  // Table-driven token lookup replaces the nested conditional chain.
   const backgroundColor = disabled
-    ? theme.surfaceSecondary
-    : variant === 'primary'
-      ? theme.accent
-      : variant === 'cta'
-        ? theme.cta
-        : variant === 'secondary'
-          ? theme.surface
-          : 'transparent';
-
+    ? DISABLED_BACKGROUND(theme)
+    : BACKGROUND_COLOR[variant](theme);
   const hoverBackgroundColor = disabled
     ? undefined
-    : variant === 'primary'
-      ? theme.accentDark
-      : variant === 'cta'
-        ? theme.ctaDark
-        : undefined;
+    : HOVER_BACKGROUND[variant]?.(theme);
 
   return (
     <Pressable
@@ -82,7 +91,7 @@ export function IconButton({
           !disabled && {
             cursor: 'pointer' as const,
             transitionProperty: 'background-color, box-shadow, transform, opacity',
-            transitionDuration: '150ms',
+            transitionDuration: `${Motion.fast}ms`,
           },
         isWeb && hovered && !pressed && hoverBackgroundColor && { backgroundColor: hoverBackgroundColor },
         isWeb && hovered && variant === 'secondary' && { borderColor: theme.textTertiary + '55' },

@@ -64,7 +64,18 @@ export function useProductList(): UseProductList {
   const load = useCallback(async () => {
     const silent = hasLoadedRef.current;
 
-    const result = await listProducts({ search: debouncedSearch });
+    // listProducts returns failures as results, not throws — an unexpected
+    // rejection (offline, crash mid-request) becomes a failed result so the
+    // status branches below run on every path.
+    let result: Awaited<ReturnType<typeof listProducts>>;
+    try {
+      result = await listProducts({ search: debouncedSearch });
+    } catch {
+      result = { ok: false, error: 'Could not reach the store catalog.' } as Awaited<
+        ReturnType<typeof listProducts>
+      >;
+    }
+
     if (result.ok) {
       hasLoadedRef.current = true;
       setProducts(result.data);
@@ -87,13 +98,29 @@ export function useProductList(): UseProductList {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    try {
+      // load() converts its own failures to results, so this only guards
+      // against a truly unexpected rejection — which must not leave the
+      // pull-to-refresh spinner spinning forever.
+      await load();
+    } catch {
+      // Swallowed deliberately; the spinner clears below on every path.
+    }
     setRefreshing(false);
   }, [load]);
 
   const deleteProductById = useCallback(async (productId: string): Promise<DeleteOutcome> => {
     setDeletingId(productId);
-    const result = await deleteProduct(productId);
+
+    // deleteProduct returns failures as results, not throws — an unexpected
+    // rejection becomes a failed outcome so the flag always resets below.
+    let result: Awaited<ReturnType<typeof deleteProduct>>;
+    try {
+      result = await deleteProduct(productId);
+    } catch {
+      result = { ok: false, error: 'Something went wrong. Please try again.' };
+    }
+
     setDeletingId(null);
 
     if (result.ok) {

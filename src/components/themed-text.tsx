@@ -1,4 +1,10 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  type TextProps,
+  type TextStyle,
+} from 'react-native';
 
 import { Fonts, ThemeColor } from '@/constants/theme';
 import { Typography } from '@/constants/typography';
@@ -28,33 +34,13 @@ export type ThemedTextProps = TextProps & {
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 
-  const typographyStyle =
-    type === 'display' || type === 'h1' || type === 'h2' || type === 'h3' ||
-    type === 'body' || type === 'bodySmall' || type === 'caption' || type === 'overline'
-      ? Typography[type]
-      : undefined;
+  // Single table lookup replaces the long conditional chain:
+  // each text type maps to its typography scale or legacy style.
+  const typeStyle = TYPE_STYLE[type];
 
   return (
     <Text
-      style={[
-        { color: theme[themeColor ?? 'text'] },
-        typographyStyle,
-        !typographyStyle &&
-          type === 'default' && styles.default,
-        !typographyStyle &&
-          type === 'small' && styles.small,
-        !typographyStyle &&
-          type === 'smallBold' && styles.smallBold,
-        !typographyStyle &&
-          type === 'subtitle' && styles.subtitle,
-        !typographyStyle &&
-          type === 'link' && styles.link,
-        !typographyStyle &&
-          type === 'linkPrimary' && styles.linkPrimary,
-        !typographyStyle &&
-          type === 'code' && styles.code,
-        style,
-      ]}
+      style={[{ color: theme[themeColor ?? 'text'] }, typeStyle, style]}
       {...rest}
     />
   );
@@ -101,3 +87,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+
+/** type → style. Typography-scale types come from the scale; the rest
+ *  from the legacy sheet below (title renders unstyled, as before). */
+const TYPE_STYLE: Record<NonNullable<ThemedTextProps['type']>, TextStyle | undefined> = {
+  default: styles.default,
+  small: styles.small,
+  smallBold: styles.smallBold,
+  subtitle: styles.subtitle,
+  title: undefined,
+  link: styles.link,
+  linkPrimary: styles.linkPrimary,
+  code: styles.code,
+  display: Typography.display,
+  h1: Typography.h1,
+  h2: Typography.h2,
+  h3: Typography.h3,
+  body: Typography.body,
+  bodySmall: Typography.bodySmall,
+  caption: Typography.caption,
+  overline: Typography.overline,
+};

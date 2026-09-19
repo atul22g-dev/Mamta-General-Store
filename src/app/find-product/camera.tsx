@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { CameraView, useCameraPermissions, type FlashMode } from 'expo-camera';
+import { CameraView, useCameraPermissions, type CameraCapturedPicture, type FlashMode } from 'expo-camera';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
@@ -63,25 +63,30 @@ export default function FindProductCameraScreen() {
     setCapturing(true);
     setCaptureError(null);
 
+    // Capture failure is handled as a value, not an exception, so there is
+    // no try/finally or throw here — shapes the React Compiler cannot
+    // lower yet. The busy flag is mirrored on every path below instead.
+    let photo: CameraCapturedPicture | null | undefined = null;
     try {
-      const photo = await cameraRef.current?.takePictureAsync({
+      photo = await cameraRef.current?.takePictureAsync({
         quality: 0.8,
         exif: false,
       });
-
-      if (!photo?.uri) {
-        throw new Error('Capture failed — try again.');
-      }
-
-      // Hand the single photo to the next step via the in-memory session
-      // (route params would serialize the URI into history).
-      scanSession.setShot(photo.uri);
-      router.push('/find-product/preview');
-    } catch (error) {
-      setCaptureError(error instanceof Error ? error.message : 'Capture failed — try again.');
-    } finally {
-      setCapturing(false);
+    } catch {
+      photo = null;
     }
+
+    if (!photo?.uri) {
+      setCaptureError('Capture failed — try again.');
+      setCapturing(false);
+      return;
+    }
+
+    // Hand the single photo to the next step via the in-memory session
+    // (route params would serialize the URI into history).
+    scanSession.setShot(photo.uri);
+    setCapturing(false);
+    router.push('/find-product/preview');
   }, [capturing, router]);
 
   return (

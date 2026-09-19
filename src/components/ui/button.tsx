@@ -2,13 +2,24 @@ import { type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing, Radius, Shadows } from '@/constants';
+import { MinTouchTarget, Motion, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+
+/** Solid variants and their background tokens (ghost is transparent). */
+const BACKGROUND_COLOR = {
+  primary: (t: ThemeTokens) => t.accent,
+  cta: (t: ThemeTokens) => t.cta,
+  secondary: (t: ThemeTokens) => t.surface,
+  tertiary: (t: ThemeTokens) => t.surfaceSecondary,
+  danger: (t: ThemeTokens) => t.error,
+  ghost: () => 'transparent',
+} as const;
 
 const isWeb = Platform.OS === 'web';
 
 type ButtonVariant = 'primary' | 'cta' | 'secondary' | 'tertiary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
+type ThemeTokens = ReturnType<typeof useTheme>;
 
 type ButtonProps = {
   title: string;
@@ -21,6 +32,31 @@ type ButtonProps = {
   disabled?: boolean;
   accessibilityLabel?: string;
   style?: StyleProp<ViewStyle>;
+};
+
+/** Solid variants get a white label; bordered ones text; ghost accent. */
+const TEXT_COLOR: Record<ButtonVariant, (t: ThemeTokens) => string> = {
+  primary: (t) => t.white,
+  cta: (t) => t.white,
+  danger: (t) => t.white,
+  secondary: (t) => t.text,
+  tertiary: (t) => t.text,
+  ghost: (t) => t.accent,
+};
+
+/** Disabled buttons are uniform regardless of variant. */
+const DISABLED_STYLE = {
+  backgroundColor: (t: ThemeTokens) => t.surfaceSecondary,
+  color: (t: ThemeTokens) => t.textTertiary,
+} as const;
+
+/** Bordered variants draw a hairline outline. */
+const BORDERED: ReadonlySet<ButtonVariant> = new Set(['secondary', 'tertiary']);
+
+/** Variants with a richer hover tint on web. */
+const HOVER_BACKGROUND: Partial<Record<ButtonVariant, (t: ThemeTokens) => string>> = {
+  primary: (t) => t.accentDark,
+  cta: (t) => t.ctaDark,
 };
 
 /**
@@ -41,41 +77,19 @@ export function Button({
 }: ButtonProps) {
   const theme = useTheme();
 
-  const backgroundColor = disabled
-    ? theme.surfaceSecondary
-    : variant === 'primary'
-      ? theme.accent
-      : variant === 'cta'
-        ? theme.cta
-        : variant === 'secondary'
-          ? theme.surface
-          : variant === 'tertiary'
-            ? theme.surfaceSecondary
-            : variant === 'danger'
-              ? theme.error
-              : 'transparent';
-
-  const textColor = disabled
-    ? theme.textTertiary
-    : variant === 'primary' || variant === 'cta' || variant === 'danger'
-      ? theme.white
-      : variant === 'secondary'
-        ? theme.text
-        : variant === 'tertiary'
-          ? theme.text
-          : theme.accent;
-
-  // Richer hover tint for solid variants on web.
-  const hoverBackgroundColor = disabled
-    ? undefined
-    : variant === 'primary'
-      ? theme.accentDark
-      : variant === 'cta'
-        ? theme.ctaDark
-        : undefined;
-
+  // Style resolution is table-driven: each variant/size maps to tokens in
+  // the lookup tables above instead of nested conditionals here.
   const sizeStyle =
     size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md;
+  const backgroundColor = disabled
+    ? DISABLED_STYLE.backgroundColor(theme)
+    : BACKGROUND_COLOR[variant](theme);
+  const textColor = disabled
+    ? DISABLED_STYLE.color(theme)
+    : TEXT_COLOR[variant](theme);
+  const hoverBackgroundColor = disabled
+    ? undefined
+    : HOVER_BACKGROUND[variant]?.(theme);
 
   return (
     <Pressable
@@ -88,16 +102,13 @@ export function Button({
         styles.button,
         sizeStyle,
         { backgroundColor },
-        (variant === 'secondary' || variant === 'tertiary') && {
-          borderWidth: 1,
-          borderColor: theme.border,
-        },
+        BORDERED.has(variant) && { borderWidth: 1, borderColor: theme.border },
         variant !== 'ghost' && !disabled && Shadows.sm,
         isWeb &&
           !disabled && {
             cursor: 'pointer' as const,
             transitionProperty: 'background-color, box-shadow, transform, opacity',
-            transitionDuration: '150ms',
+            transitionDuration: `${Motion.fast}ms`,
           },
         isWeb && hovered && !pressed && hoverBackgroundColor && { backgroundColor: hoverBackgroundColor },
         isWeb && hovered && !disabled && Shadows.md,
@@ -129,17 +140,17 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   sm: {
-    minHeight: 44,
+    minHeight: MinTouchTarget,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
   },
   md: {
-    minHeight: 52,
+    minHeight: MinTouchTarget + 8,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.four,
   },
   lg: {
-    minHeight: 56,
+    minHeight: MinTouchTarget + 12,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.five,
   },

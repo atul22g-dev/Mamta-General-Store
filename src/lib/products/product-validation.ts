@@ -48,6 +48,17 @@ export type ProductFormValues = {
   unit: ProductUnit;
 };
 
+/** Defaults for a brand-new empty form (lives with the values type it mirrors). */
+export const EMPTY_PRODUCT_FORM: ProductFormValues = {
+  name: '',
+  description: '',
+  category: '',
+  mrp: '',
+  sellingPrice: '',
+  stock: '',
+  unit: 'piece',
+};
+
 export type ProductFormErrors = Partial<
   Record<'name' | 'category' | 'mrp' | 'sellingPrice' | 'stock' | 'description', string>
 >;

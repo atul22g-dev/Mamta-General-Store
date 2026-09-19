@@ -77,6 +77,7 @@ export default function FindProductScreen() {
                 styles.shutter,
                 {
                   borderColor: theme.cta,
+                  boxShadow: `0 10px 20px 0 ${theme.ctaGlow}`,
                   experimental_backgroundImage: `linear-gradient(135deg, ${theme.cta}, ${theme.cta}CC)`,
                   backgroundImage: `linear-gradient(135deg, ${theme.cta}, ${theme.cta}CC)`,
                 },
@@ -185,7 +186,6 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 8px 16px 0 rgba(234, 88, 12, 0.3)',
   },
   galleryTile: {
     width: 44,

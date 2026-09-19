@@ -2,6 +2,13 @@
   "name": "mamta-general-store",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "reset-project": "node ./scripts/reset-project.js",
+    "android": "expo start --android",
+    "lint": "expo lint",
+    "doctor": "npx react-doctor@latest"
+  },
   "dependencies": {
     "@expo/ui": "~57.0.19",
     "@expo/vector-icons": "^15.0.2",
@@ -40,14 +47,6 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
-  },
-  "scripts": {
-    "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
   },
   "private": true
 }

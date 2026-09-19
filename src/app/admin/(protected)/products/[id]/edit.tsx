@@ -104,17 +104,14 @@ export default function AdminEditProductScreen() {
     const existingImages = fresh.ok ? fresh.data.product_images : product.product_images;
     const { add, remove } = planImageChanges(existingImages, payload.images);
 
-    const failures: string[] = [];
-
-    for (const ref of remove) {
-      const removed = await removeProductImage(ref.image_url);
-      if (!removed.ok) failures.push(removed.error);
-    }
-
-    for (const image of add) {
-      const upload = await uploadProductImage(product.id, image.uri);
-      if (!upload.ok) failures.push(upload.error);
-    }
+    // Remove + upload are independent operations on different Storage
+    // objects, so every request starts together; per-item failures are
+    // collected and reported without losing the saved row.
+    const outcomes = await Promise.all([
+      ...remove.map((ref) => removeProductImage(ref.image_url)),
+      ...add.map((image) => uploadProductImage(product.id, image.uri)),
+    ]);
+    const failures = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.error]));
 
     if (failures.length > 0) {
       // Row is saved; some images failed. Keep the user on the form with

@@ -1,6 +1,6 @@
 import { Platform, StyleSheet, Pressable, type StyleProp, type ViewStyle } from 'react-native';
 
-import { Spacing, Radius, Shadows } from '@/constants';
+import { MinTouchTarget, Motion, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 const isWeb = Platform.OS === 'web';
@@ -55,7 +55,7 @@ export function Card({
           isWeb && {
             cursor: 'pointer' as const,
             transitionProperty: 'box-shadow, transform, border-color',
-            transitionDuration: '180ms',
+            transitionDuration: `${Motion.base}ms`,
           },
         onPress && hovered && !pressed && Shadows.lg,
         onPress && hovered && !pressed && { borderColor: theme.textTertiary + '55' },
@@ -71,6 +71,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: Radius.lg,
     borderWidth: 1,
+    minHeight: MinTouchTarget,
   },
   pressed: {
     opacity: 0.9,

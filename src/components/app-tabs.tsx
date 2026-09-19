@@ -1,43 +1,72 @@
-import { NativeTabs } from 'expo-router/unstable-native-tabs';
-import { useColorScheme } from 'react-native';
+import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps } from 'expo-router/ui';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { Icon, type IconName } from '@/components/ui/icon';
+import { ThemedText } from './themed-text';
 
-/**
- * Native tab bar (iOS/Android). Icons use platform-native glyph sets —
- * SF Symbols on iOS and Material Symbols on Android — rendered by the OS
- * itself, so they always appear (no font loading, no network).
- */
+import { Spacing } from '@/constants/theme';
+
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      iconColor={{ default: colors.textTertiary, selected: colors.accent }}
-      labelStyle={{
-        default: { color: colors.textSecondary },
-        selected: { color: colors.text },
-      }}>
-      <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          sf="house.fill"
-          md={{ default: 'home', selected: 'home_filled' }}
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="products">
-        <NativeTabs.Trigger.Label>Products</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="square.grid.2x2" md="grid_view" />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs>
+      <TabSlot style={styles.slot} />
+      <TabList asChild>
+        <View style={styles.tabBar}>
+          <TabTrigger name="index" href="/" asChild>
+            <TabButton icon="home" label="Home" />
+          </TabTrigger>
+          <TabTrigger name="products" href="/products" asChild>
+            <TabButton icon="apps" label="Products" />
+          </TabTrigger>
+          <TabTrigger name="settings" href="/settings" asChild>
+            <TabButton icon="settings" label="Settings" />
+          </TabTrigger>
+        </View>
+      </TabList>
+    </Tabs>
   );
 }
+
+type TabButtonProps = {
+  icon: IconName;
+  label: string;
+};
+
+function TabButton({ icon, label, isFocused, ...props }: TabButtonProps & TabTriggerSlotProps) {
+  return (
+    <Pressable {...props} style={({ pressed }) => [
+      styles.tabButton,
+      pressed && styles.pressed,
+    ]}>
+      <Icon name={icon} size={22} color={isFocused ? undefined : 'currentColor'} />
+      <ThemedText type="smallBold" themeColor={isFocused ? 'accent' : 'textSecondary'}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  slot: {
+    flex: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.two,
+    gap: Spacing.one,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+});

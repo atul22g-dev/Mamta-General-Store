@@ -68,7 +68,16 @@ export async function uploadProductImage(
   localUri: string,
 ): Promise<ServiceResult<{ imageUrl: string; path: string }>> {
   // Fetch the binary from the local URI (works on native and web blobs).
+  // fetch() resolves even on failure (it does not reject on HTTP errors),
+  // so check the status before consuming the body — otherwise a failed
+  // read would upload empty/corrupt bytes and report success.
   const response = await fetch(localUri);
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: 'Could not read the selected image. Pick it again and retry.',
+    };
+  }
   const arrayBuffer = await response.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
 

@@ -2,17 +2,19 @@ import 'react-native-url-polyfill/auto';
 
 import { createClient } from '@supabase/supabase-js';
 
-import 'expo-sqlite/localStorage/install';
-
 import { Database } from '@/types/database';
+
+import { resolveAuthStorage } from './auth-storage';
 
 /**
  * The single Supabase client for the app.
  *
  * - Credentials come from EXPO_PUBLIC_* env vars — never hard-coded, never
  *   a service-role key (that key must only ever live server-side).
- * - Sessions persist via expo-sqlite's localStorage polyfill (the current
- *   Expo-recommended storage backend; survives app restarts).
+ * - Sessions persist via the platform-split auth storage (`./auth-storage`):
+ *   SQLite-backed on native, localStorage in the browser, no-op in Node
+ *   static rendering. The web bundle never includes expo-sqlite because
+ *   Metro resolves the platform extensions at the graph level.
  * - `detectSessionInUrl: false` because there is no browser URL to parse
  *   on native. Web deep-link OAuth flows pass the code explicitly.
  */
@@ -30,7 +32,7 @@ if (!supabaseUrl || !supabasePublishableKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabasePublishableKey, {
   auth: {
-    storage: localStorage,
+    storage: resolveAuthStorage(),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

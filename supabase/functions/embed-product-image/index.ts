@@ -93,36 +93,70 @@ Deno.serve(async (req: Request) => {
 
     // --- Download + embed each reference image ---
     const provider = getEmbeddingProvider();
-    const dataUris: string[] = [];
 
-    for (const image of images) {
-      const response = await fetch(image.image_url);
-      if (!response.ok) {
-        throw new Error(`Could not download reference image ${image.id}.`);
-      }
-      const buffer = new Uint8Array(await response.arrayBuffer());
-      const contentType = response.headers.get('content-type') ?? 'image/jpeg';
-      const base64 = btoa(String.fromCharCode(...buffer));
-      dataUris.push(`data:${contentType};base64,${base64}`);
+    // Downloads are independent — run them concurrently. A URL that fails
+    // is skipped and reported (its embedding stays null, so it remains
+    // pending for the next invocation) instead of aborting the batch.
+    const downloaded = await Promise.all(
+      images.map(async (image) => {
+        try {
+          const response = await fetch(image.image_url);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const buffer = new Uint8Array(await response.arrayBuffer());
+          const contentType = response.headers.get('content-type') ?? 'image/jpeg';
+          const base64 = btoa(String.fromCharCode(...buffer));
+          return {
+            id: image.id,
+            dataUri: `data:${contentType};base64,${base64}`,
+            error: null as string | null,
+          };
+        } catch (error) {
+          return {
+            id: image.id,
+            dataUri: '',
+            error: error instanceof Error ? error.message : 'Download failed.',
+          };
+        }
+      }),
+    );
+
+    const okDownloads = downloaded.filter((item) => item.error === null);
+    const downloadFailures = downloaded.flatMap((item) =>
+      item.error === null ? [] : [{ id: item.id, error: item.error as string }],
+    );
+
+    if (okDownloads.length === 0) {
+      return json({ embedded: 0, failed: downloadFailures }, 500);
     }
 
-    const { vectors } = await provider.embedImages(dataUris);
+    const { vectors } = await provider.embedImages(okDownloads.map((item) => item.dataUri));
 
-    // --- Persist embeddings ---
-    let embedded = 0;
-    for (let i = 0; i < images.length; i++) {
-      const { error } = await serviceClient
-        .from('product_images')
-        .update({ embedding: vectors[i] })
-        .eq('id', images[i].id);
+    // --- Persist embeddings concurrently (independent rows) ---
+    const persistResults = await Promise.all(
+      okDownloads.map((item, index) =>
+        serviceClient
+          .from('product_images')
+          .update({ embedding: vectors[index] })
+          .eq('id', item.id)
+          .then(({ error }) => ({ id: item.id, error: error?.message ?? null })),
+      ),
+    );
 
-      if (error) {
-        throw new Error(`Could not store embedding for image ${images[i].id}: ${error.message}`);
-      }
-      embedded++;
-    }
+    const persistFailures = persistResults.flatMap((result) =>
+      result.error === null ? [] : [{ id: result.id, error: result.error as string }],
+    );
+    const embedded = persistResults.length - persistFailures.length;
 
-    return json({ embedded, remaining_note: 'Re-invoke to continue backfilling.' }, 200);
+    return json(
+      {
+        embedded,
+        failed: [...downloadFailures, ...persistFailures],
+        remaining_note: 'Re-invoke to continue backfilling.',
+      },
+      200,
+    );
   } catch (error) {
     return json(
       { error: error instanceof Error ? error.message : 'Embedding failed.' },

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Image, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,6 +20,7 @@ import { useProductDetail } from '@/hooks/use-product-detail';
 import { deleteProduct } from '@/lib/products/product-service';
 import { formatPrice } from '@/lib/format';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
+import type { ProductImageRef, ProductWithImages } from '@/lib/products/product-service';
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -31,6 +32,85 @@ function stockTone(stock: number): 'success' | 'warning' | 'error' {
   if (stock === 0) return 'error';
   if (stock <= 10) return 'warning';
   return 'success';
+}
+
+/** Horizontal strip of product photos (short list per product). */
+function ThumbStrip({ images }: { images: ProductImageRef[] }) {
+  return (
+    <FlatList
+      horizontal
+      data={images}
+      keyExtractor={(image) => image.id}
+      showsHorizontalScrollIndicator={false}
+      style={styles.thumbStrip}
+      renderItem={({ item }) => (
+        <Image source={{ uri: item.image_url }} style={styles.thumbImage} />
+      )}
+    />
+  );
+}
+
+/** Gallery block: hero photo (or letter tile) plus the thumbnail strip. */
+function ProductGallery({ product }: { product: ProductWithImages }) {
+  const theme = useTheme();
+  const hero = product.product_images[0];
+
+  if (!hero) {
+    return (
+      <View style={[styles.gallery, Shadows.sm]}>
+        <View style={[styles.heroFallback, { backgroundColor: theme.accentSoft }]}>
+          <ThemedText type="display" style={{ color: theme.accent }}>
+            {product.name.charAt(0).toUpperCase() || '?'}
+          </ThemedText>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.gallery, Shadows.sm]}>
+      <Image source={{ uri: hero.image_url }} style={styles.heroImage} />
+      {product.product_images.length > 1 && <ThumbStrip images={product.product_images} />}
+    </View>
+  );
+}
+
+/** Price card: dominant selling price, struck-through MRP, savings badge. */
+function PriceCard({ product }: { product: ProductWithImages }) {
+  const theme = useTheme();
+  const hasDiscount = product.mrp !== product.selling_price;
+  const savePercent =
+    hasDiscount && product.mrp > 0
+      ? Math.round(((product.mrp - product.selling_price) / product.mrp) * 100)
+      : 0;
+
+  return (
+    <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.priceRow}>
+        <View style={styles.priceMain}>
+          <ThemedText type="caption" themeColor="textTertiary">
+            Selling price
+          </ThemedText>
+          <ThemedText type="h1" style={{ color: theme.accent }}>
+            {formatPrice(product.selling_price)}
+          </ThemedText>
+        </View>
+        {hasDiscount && (
+          <View style={styles.priceAside}>
+            <ThemedText type="caption" themeColor="textTertiary">
+              MRP
+            </ThemedText>
+            <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrp}>
+              {formatPrice(product.mrp)}
+            </ThemedText>
+            {product.mrp > product.selling_price && (
+              <Badge label={`Save ${savePercent}%`} variant="success" size="sm" />
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
 }
 
 /** Product detail screen for /admin/products/[id] — real Supabase data. */
@@ -49,7 +129,16 @@ export default function AdminProductDetailScreen() {
     if (!product || deleting) return;
     setDeleting(true);
 
-    const result = await deleteProduct(product.id);
+    // Service errors come back as results, not throws — an unexpected
+    // rejection (offline, crash mid-request) becomes a failed result so
+    // the busy flag always resets below, on every path.
+    let result: Awaited<ReturnType<typeof deleteProduct>>;
+    try {
+      result = await deleteProduct(product.id);
+    } catch {
+      result = { ok: false, error: 'Something went wrong. Please try again.' };
+    }
+
     setDeleting(false);
     setConfirmingDelete(false);
 
@@ -113,33 +202,7 @@ export default function AdminProductDetailScreen() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled">
             {/* Gallery */}
-            <View style={[styles.gallery, Shadows.sm]}>
-              {product.product_images[0] ? (
-                <>
-                  <Image
-                    source={{ uri: product.product_images[0].image_url }}
-                    style={styles.heroImage}
-                  />
-                  {product.product_images.length > 1 && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbStrip}>
-                      {product.product_images.map((image) => (
-                        <Image
-                          key={image.id}
-                          source={{ uri: image.image_url }}
-                          style={styles.thumbImage}
-                        />
-                      ))}
-                    </ScrollView>
-                  )}
-                </>
-              ) : (
-                <View style={[styles.heroFallback, { backgroundColor: theme.accentSoft }]}>
-                  <ThemedText type="display" style={{ color: theme.accent }}>
-                    {product.name.charAt(0).toUpperCase() || '?'}
-                  </ThemedText>
-                </View>
-              )}
-            </View>
+            <ProductGallery product={product} />
 
             {/* Identity */}
             <View style={styles.identity}>
@@ -160,35 +223,7 @@ export default function AdminProductDetailScreen() {
             </View>
 
             {/* Pricing */}
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.priceRow}>
-                <View style={styles.priceMain}>
-                  <ThemedText type="caption" themeColor="textTertiary">
-                    Selling price
-                  </ThemedText>
-                  <ThemedText type="h1" style={{ color: theme.accent }}>
-                    {formatPrice(product.selling_price)}
-                  </ThemedText>
-                </View>
-                {product.mrp !== product.selling_price && (
-                  <View style={styles.priceAside}>
-                    <ThemedText type="caption" themeColor="textTertiary">
-                      MRP
-                    </ThemedText>
-                    <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrp}>
-                      {formatPrice(product.mrp)}
-                    </ThemedText>
-                    {product.mrp > product.selling_price && (
-                      <Badge
-                        label={`Save ${Math.round(((product.mrp - product.selling_price) / product.mrp) * 100)}%`}
-                        variant="success"
-                        size="sm"
-                      />
-                    )}
-                  </View>
-                )}
-              </View>
-            </View>
+            <PriceCard product={product} />
 
             {/* Description */}
             {product.description && (

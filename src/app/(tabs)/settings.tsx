@@ -1,29 +1,43 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import * as Application from 'expo-application';
 
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
+import { IconButton } from '@/components/ui/icon-button';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loading } from '@/components/ui/loading';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, WebTopBarInset, Spacing, Radius } from '@/constants';
+import {
+  MaxContentWidth,
+  WebTopBarInset,
+  MinTouchTarget,
+  Motion,
+  Spacing,
+  Radius,
+} from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
 
 const APP_VERSION = Application.nativeApplicationVersion ?? '1.0.0';
 
-/** Static informational row (no sensitive data — email/role only for admins). */
+/** Email → initial for the account avatar. */
+function initialOf(email: string | null | undefined): string {
+  return email?.charAt(0).toUpperCase() ?? '?';
+}
+
+/** Static informational row (app version, about). */
 function InfoRow({ icon, label, value }: { icon: IconName; label: string; value: string }) {
   const theme = useTheme();
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { minHeight: MinTouchTarget }]}>
       <View style={[styles.rowIcon, { backgroundColor: theme.accentSoft }]}>
         <Icon name={icon} size={16} color={theme.accent} />
       </View>
@@ -37,64 +51,109 @@ function InfoRow({ icon, label, value }: { icon: IconName; label: string; value:
   );
 }
 
+/** Action row with chevron — navigation targets inside settings groups. */
+function ActionRow({
+  icon,
+  iconColor,
+  iconBackground,
+  label,
+  description,
+  onPress,
+}: {
+  icon: IconName;
+  iconColor: string;
+  iconBackground: string;
+  label: string;
+  description: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        { minHeight: MinTouchTarget + 4 },
+        pressed && styles.rowPressed,
+      ]}>
+      <View style={[styles.rowIcon, { backgroundColor: iconBackground }]}>
+        <Icon name={icon} size={16} color={iconColor} />
+      </View>
+      <View style={styles.actionText}>
+        <ThemedText type="smallBold">{label}</ThemedText>
+        <ThemedText type="caption" themeColor="textTertiary">
+          {description}
+        </ThemedText>
+      </View>
+      <Icon name="chevron-forward" size={16} color={theme.textTertiary} />
+    </Pressable>
+  );
+}
+
+/** Account section body while the session is still being restored. */
+function AccountLoadingRow() {
+  const theme = useTheme();
+
+  return (
+    <View style={[styles.row, { minHeight: MinTouchTarget }]}>
+      <Skeleton style={{ width: 44, height: 44, borderRadius: Radius.md }} />
+      <View style={styles.actionText}>
+        <Skeleton style={{ width: 140, height: 14, borderRadius: Radius.sm }} />
+        <Skeleton style={{ width: 180, height: 12, borderRadius: Radius.sm }} />
+      </View>
+    </View>
+  );
+}
+
 /**
- * Settings tab.
- *
- * Everyone sees app information (store name, version, about). Authenticated
- * admins additionally see their account (email, role) with a confirmed
- * logout. No tokens, session internals, or ids are ever displayed.
+ * Settings tab. App information for everyone; the account section adapts
+ * to the auth state — sign-in prompt for visitors, profile + dashboard
+ * link + logout (with confirmation) for signed-in admins.
  */
 export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { profile, status, isAdmin, signOut } = useAuth();
+  const { status, profile, isAdmin, signOut } = useAuth();
 
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = async () => {
-    if (signingOut) return;
     setSigningOut(true);
-
     try {
-      await signOut(); // clears the Supabase session via AuthProvider
+      await signOut();
       setConfirmingLogout(false);
-
-      // Land on Home and unwind anything pushed above the tabs (e.g. an
-      // admin flow). navigate() pops to the existing tab when present.
-      // The admin guard also reacts to the cleared session on its own.
-      router.navigate('/(tabs)');
-    } catch {
-      Alert.alert('Sign out failed', 'Please try again.');
-      setConfirmingLogout(false);
+      // Session cleared by the provider; land on the consumer home tab.
+      router.replace('/(tabs)');
     } finally {
       setSigningOut(false);
     }
   };
 
-  const authLoading = status === 'loading';
-
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <Animated.ScrollView
-          entering={FadeIn.duration(300)}
+          entering={FadeIn.duration(Motion.base)}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
           {/* Header */}
-          <View style={styles.header}>
+          <Animated.View entering={FadeInUp.duration(Motion.base).delay(50)} style={styles.header}>
             <ThemedText type="h1">Settings</ThemedText>
             <ThemedText type="bodySmall" themeColor="textSecondary">
               App information and account
             </ThemedText>
-          </View>
+          </Animated.View>
 
-          {/* Store / App info — visible to everyone */}
-          <View style={styles.section}>
+          {/* Store / App info */}
+          <Animated.View entering={FadeInUp.duration(Motion.base).delay(100)} style={styles.section}>
             <ThemedText type="overline" themeColor="textTertiary" style={styles.sectionTitle}>
               App
             </ThemedText>
-            <ThemedView type="surface" style={[styles.group, { borderColor: theme.border }]}>
+            <Card style={styles.group} padding="none">
               {/* Store identity header */}
               <View style={styles.storeRow}>
                 <View style={[styles.storeBadge, { backgroundColor: theme.accentSoft }]}>
@@ -108,60 +167,24 @@ export default function SettingsScreen() {
                 </View>
               </View>
 
-              <View style={[styles.divider, { borderTopColor: theme.border }]} />
+              <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
 
               <InfoRow icon="phone-portrait" label="App version" value={APP_VERSION} />
               <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
               <InfoRow icon="information-circle" label="About" value="Price lookup for shop floor" />
-            </ThemedView>
-          </View>
+            </Card>
+          </Animated.View>
 
-          {/* Admin account — only for authenticated admins */}
-          {authLoading ? (
-            <Loading size="small" text="Checking account…" />
-          ) : isAdmin ? (
-            <View style={styles.section}>
-              <ThemedText type="overline" themeColor="textTertiary" style={styles.sectionTitle}>
-                Account
-              </ThemedText>
-              <ThemedView type="surface" style={[styles.group, { borderColor: theme.border }]}>
-                <View style={styles.accountRow}>
-                  <View style={[styles.accountBadge, { backgroundColor: theme.successSoft }]}>
-                    <Icon name="shield-checkmark" size={20} color={theme.success} />
-                  </View>
-                  <View style={styles.accountText}>
-                    <ThemedText type="body" numberOfLines={1} ellipsizeMode="middle">
-                      {profile?.email ?? 'Signed in'}
-                    </ThemedText>
-                    <View style={styles.roleRow}>
-                      <Badge label="Admin" variant="success" size="sm" />
-                      <ThemedText type="caption" themeColor="textTertiary">
-                        Full catalog access
-                      </ThemedText>
-                    </View>
-                  </View>
-                </View>
+          {/* Account — reflects the real auth state */}
+          <Animated.View entering={FadeInUp.duration(Motion.base).delay(150)} style={styles.section}>
+            <ThemedText type="overline" themeColor="textTertiary" style={styles.sectionTitle}>
+              Account
+            </ThemedText>
+            <Card style={styles.group} padding="none">
+              {status === 'loading' && <AccountLoadingRow />}
 
-                <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
-
-                <Button
-                  title="Log Out"
-                  variant="danger"
-                  icon={<Icon name="log-out" size={18} color={theme.white} />}
-                  block
-                  onPress={() => setConfirmingLogout(true)}
-                  style={styles.logoutButton}
-                />
-              </ThemedView>
-            </View>
-          ) : (
-            /* Signed-out visitors: quiet sign-in hint, no auth internals */
-            <View style={styles.section}>
-              <ThemedText type="overline" themeColor="textTertiary" style={styles.sectionTitle}>
-                Account
-              </ThemedText>
-              <ThemedView type="surface" style={[styles.group, { borderColor: theme.border }]}>
-                <View style={styles.accountRow}>
+              {status === 'unauthenticated' && (
+                <View style={[styles.row, { minHeight: MinTouchTarget + 4 }]}>
                   <View style={[styles.accountBadge, { backgroundColor: theme.surfaceSecondary }]}>
                     <Icon name="person-circle" size={20} color={theme.textTertiary} />
                   </View>
@@ -178,25 +201,79 @@ export default function SettingsScreen() {
                     onPress={() => router.push('/admin/login')}
                   />
                 </View>
-              </ThemedView>
-            </View>
-          )}
+              )}
 
-          <ThemedText type="caption" themeColor="textTertiary" style={styles.footnote}>
-            Mamta General Store · v{APP_VERSION}
-          </ThemedText>
+              {status === 'authenticated' && (
+                <>
+                  {/* Profile */}
+                  <View style={[styles.row, { minHeight: MinTouchTarget + 4 }]}>
+                    <View style={[styles.accountBadge, { backgroundColor: theme.accentSoft }]}>
+                      <ThemedText type="h3" style={{ color: theme.accentDark }}>
+                        {initialOf(profile?.email)}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.accountText}>
+                      <ThemedText type="body" numberOfLines={1} style={styles.accountEmail}>
+                        {profile?.email ?? 'Signed in'}
+                      </ThemedText>
+                      <View style={styles.roleRow}>
+                        <Badge
+                          label={isAdmin ? 'Admin' : 'Staff'}
+                          variant={isAdmin ? 'accent' : 'neutral'}
+                          size="sm"
+                          dot
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  {isAdmin && (
+                    <>
+                      <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
+                      <ActionRow
+                        icon="grid"
+                        iconColor={theme.accent}
+                        iconBackground={theme.accentSoft}
+                        label="Admin dashboard"
+                        description="Inventory stats and quick actions"
+                        onPress={() => router.push('/admin')}
+                      />
+                    </>
+                  )}
+
+                  <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
+                  <ActionRow
+                    icon="log-out"
+                    iconColor={theme.error}
+                    iconBackground={theme.errorSoft}
+                    label="Log out"
+                    description="End this session on the device"
+                    onPress={() => setConfirmingLogout(true)}
+                  />
+                </>
+              )}
+            </Card>
+          </Animated.View>
+
+          <Animated.View entering={FadeInUp.duration(Motion.base).delay(200)} style={styles.footnote}>
+            <ThemedText type="caption" themeColor="textTertiary">
+              Mamta General Store · v{APP_VERSION}
+            </ThemedText>
+          </Animated.View>
         </Animated.ScrollView>
       </SafeAreaView>
 
       {/* Logout confirmation */}
       <ConfirmDialog
         visible={confirmingLogout}
-        title="Log out of Mamta General Store?"
-        message="You will need to sign in again to access admin tools."
+        title="Log out?"
+        message="You will need to sign in again to use admin tools on this device."
         confirmLabel="Log Out"
+        busyLabel="Logging out…"
         cancelLabel="Cancel"
         destructive
         busy={signingOut}
+        icon={<Icon name="log-out" size={24} color={theme.error} />}
         onConfirm={() => void handleSignOut()}
         onCancel={() => !signingOut && setConfirmingLogout(false)}
       />
@@ -253,13 +330,13 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+  },
+  rowPressed: {
+    opacity: 0.75,
   },
   rowIcon: {
     width: 32,
@@ -278,6 +355,10 @@ const styles = StyleSheet.create({
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  actionText: {
+    flex: 1,
+    gap: 2,
+  },
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,6 +375,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.one / 2,
   },
+  accountEmail: {
+    flexShrink: 1,
+  },
   roleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,6 +388,6 @@ const styles = StyleSheet.create({
   },
   footnote: {
     textAlign: 'center',
-    marginTop: 'auto',
+    marginTop: Spacing.two,
   },
 });

@@ -12,9 +12,13 @@ type ConfirmDialogProps = {
   title: string;
   message: string;
   confirmLabel?: string;
+  /** Label shown on the confirm button while `busy`. */
+  busyLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
   busy?: boolean;
+  /** Optional custom icon node; defaults to the destructive trash glyph. */
+  icon?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -29,9 +33,11 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = 'Confirm',
+  busyLabel = 'Deleting…',
   cancelLabel = 'Cancel',
   destructive = false,
   busy = false,
+  icon,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -51,11 +57,7 @@ export function ConfirmDialog({
                 styles.iconTile,
                 { backgroundColor: destructive ? theme.errorSoft : theme.accentSoft },
               ]}>
-              <Icon
-                name="trash"
-                size={24}
-                color={destructive ? theme.error : theme.accent}
-              />
+              {icon ?? <Icon name="trash" size={24} color={destructive ? theme.error : theme.accent} />}
             </View>
             <ThemedText type="h3" style={styles.title}>
               {title}
@@ -73,7 +75,7 @@ export function ConfirmDialog({
                 block
               />
               <Button
-                title={busy ? 'Deleting…' : confirmLabel}
+                title={busy ? busyLabel : confirmLabel}
                 variant={destructive ? 'danger' : 'primary'}
                 size="sm"
                 onPress={onConfirm}

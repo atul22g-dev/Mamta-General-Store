@@ -1,7 +1,7 @@
 import {
+  FlatList,
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -24,10 +24,19 @@ import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
   UNIT_LABELS,
+  type ProductCategory,
   type ProductUnit,
 } from '@/lib/products/product-validation';
 import { matchSession } from '@/lib/visual-match/session';
 import type { ProductWithImages } from '@/lib/products/product-service';
+
+/** Chip-row filter values: the implicit "All" filter + every category. */
+const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
+
+/** Vertical gap between catalog cards (FlatList separator). */
+function RowSeparator() {
+  return <View style={styles.rowSeparator} />;
+}
 
 /** Customer catalog card: image, name, category, live price. */
 function CatalogCard({
@@ -110,89 +119,95 @@ export default function ProductsScreen() {
     router.push('/find-product/result');
   };
 
+  // Header (title, search, filters, and loading/error/empty panels) rides
+  // above the virtualized rows; FlatList mounts only the visible cards.
+  const listHeader = (
+    <View style={styles.headerBlock}>
+      {/* Header */}
+      <View style={styles.header}>
+        <ThemedText type="h1" style={styles.title}>
+          Products
+        </ThemedText>
+        <ThemedText type="bodySmall" themeColor="textSecondary">
+          Browse the store catalog
+        </ThemedText>
+      </View>
+
+      {/* Search */}
+      <Input
+        placeholder="Search catalog…"
+        value={search}
+        onChangeText={setSearch}
+        leftIcon={<Icon name="search" size={18} color={theme.textTertiary} />}
+        clearButtonMode="while-editing"
+        autoCorrect={false}
+        returnKeyType="search"
+        accessibilityLabel="Search catalog by product name"
+      />
+
+      {/* Category chips (short fixed set, horizontal FlatList) */}
+      <FlatList
+        horizontal
+        data={CHIP_FILTERS}
+        keyExtractor={(item) => item}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsRow}
+        renderItem={({ item }) => (
+          <Chip
+            label={item === 'all' ? 'All' : CATEGORY_LABELS[item]}
+            active={category === item}
+            onPress={() => setCategory(item)}
+          />
+        )}
+      />
+
+      {/* States */}
+      {loading && <SkeletonList count={6} />}
+
+      {status === 'error' && (
+        <ErrorState
+          description={errorMessage ?? 'Failed to load the catalog.'}
+          onRetry={() => void refresh()}
+        />
+      )}
+
+      {status === 'ready' && products.length === 0 && (
+        <EmptyState
+          title={hasQuery ? 'No products found' : 'Catalog is empty'}
+          description={
+            hasQuery
+              ? 'Try a different name or category.'
+              : 'Products added by the store admin will appear here.'
+          }
+          icon={
+            <Icon name={hasQuery ? 'search' : 'cube-outline'} size={26} color={theme.accent} />
+          }
+        />
+      )}
+    </View>
+  );
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <Animated.ScrollView
-          entering={FadeIn.duration(300)}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled">
-          {/* Header */}
-          <View style={styles.header}>
-            <ThemedText type="h1" style={styles.title}>
-              Products
-            </ThemedText>
-            <ThemedText type="bodySmall" themeColor="textSecondary">
-              Browse the store catalog
-            </ThemedText>
-          </View>
-
-          {/* Search */}
-          <Input
-            placeholder="Search catalog…"
-            value={search}
-            onChangeText={setSearch}
-            leftIcon={<Icon name="search" size={18} color={theme.textTertiary} />}
-            clearButtonMode="while-editing"
-            autoCorrect={false}
-            returnKeyType="search"
-            accessibilityLabel="Search catalog by product name"
+        {/* Animated.View wrapper carries the entrance: reanimated's web
+            layout animations crash on Animated.FlatList itself (its RN-web
+            internals pass undefined styles into the animation manager), so
+            the list stays a plain FlatList on every platform. */}
+        <Animated.View entering={FadeIn.duration(300)} style={styles.grow}>
+          <FlatList
+            data={products}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }) => (
+              <CatalogCard product={item} index={index} onPress={() => handleSelect(item)} />
+            )}
+            ItemSeparatorComponent={RowSeparator}
+            ListHeaderComponent={listHeader}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           />
-
-          {/* Category chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}>
-            <Chip label="All" active={category === 'all'} onPress={() => setCategory('all')} />
-            {PRODUCT_CATEGORIES.map((cat) => (
-              <Chip
-                key={cat}
-                label={CATEGORY_LABELS[cat]}
-                active={category === cat}
-                onPress={() => setCategory(cat)}
-              />
-            ))}
-          </ScrollView>
-
-          {/* Body */}
-          {loading && <SkeletonList count={6} />}
-
-          {status === 'error' && (
-            <ErrorState
-              description={errorMessage ?? 'Failed to load the catalog.'}
-              onRetry={() => void refresh()}
-            />
-          )}
-
-          {status === 'ready' && products.length === 0 && (
-            <EmptyState
-              title={hasQuery ? 'No products found' : 'Catalog is empty'}
-              description={
-                hasQuery
-                  ? 'Try a different name or category.'
-                  : 'Products added by the store admin will appear here.'
-              }
-              icon={
-                <Icon name={hasQuery ? 'search' : 'cube-outline'} size={26} color={theme.accent} />
-              }
-            />
-          )}
-
-          {status === 'ready' && products.length > 0 && (
-            <View style={styles.list}>
-              {products.map((product, index) => (
-                <CatalogCard
-                  key={product.id}
-                  product={product}
-                  index={index}
-                  onPress={() => handleSelect(product)}
-                />
-              ))}
-            </View>
-          )}
-        </Animated.ScrollView>
+        </Animated.View>
       </SafeAreaView>
     </ThemedView>
   );
@@ -239,6 +254,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  grow: {
+    flex: 1,
+  },
   content: {
     flexGrow: 1,
     paddingHorizontal: Spacing.four,
@@ -247,7 +265,10 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     width: '100%',
+  },
+  headerBlock: {
     gap: Spacing.three,
+    paddingBottom: Spacing.three,
   },
   header: {
     gap: Spacing.one / 2,
@@ -265,8 +286,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1,
   },
-  list: {
-    gap: Spacing.two,
+  rowSeparator: {
+    height: Spacing.two,
   },
   card: {
     flexDirection: 'row',

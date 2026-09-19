@@ -55,12 +55,14 @@ export default function AdminAddProductScreen() {
     }
 
     // 2. Upload images (best effort — a failed image must not lose the product).
-    const failures: string[] = [];
-    for (const image of payload.images) {
-      if (image.url !== undefined) continue; // already stored
-      const upload = await uploadProductImage(created.data.id, image.uri);
-      if (!upload.ok) failures.push(upload.error);
-    }
+    //    Each file is an independent upload, so all of them start together
+    //    instead of queuing one-by-one; per-item failures are collected so
+    //    the product row still saves.
+    const pending = payload.images.filter((image) => image.url === undefined); // already-stored images skipped
+    const uploads = await Promise.all(
+      pending.map((image) => uploadProductImage(created.data.id, image.uri)),
+    );
+    const failures = uploads.flatMap((upload) => (upload.ok ? [] : [upload.error]));
 
     if (failures.length > 0) {
       setImageWarning(

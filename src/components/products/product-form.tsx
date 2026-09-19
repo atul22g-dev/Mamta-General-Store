@@ -17,21 +17,12 @@ import {
   PRODUCT_UNITS,
   CATEGORY_LABELS,
   UNIT_LABELS,
+  EMPTY_PRODUCT_FORM,
   validateProductForm,
   isFormValid,
   type ProductCategory,
   type ProductFormValues,
 } from '@/lib/products/product-validation';
-
-export const EMPTY_PRODUCT_FORM: ProductFormValues = {
-  name: '',
-  description: '',
-  category: '',
-  mrp: '',
-  sellingPrice: '',
-  stock: '',
-  unit: 'piece',
-};
 
 /** Fully validated + parsed payload handed to the parent's onSubmit. */
 export type ValidProductSubmit = {

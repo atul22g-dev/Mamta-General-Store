@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, WebTopBarInset, MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
+import { BottomTabInset, WebTopBarInset, MaxContentWidth, Spacing, Radius, Typography, Motion } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
@@ -19,14 +19,21 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          entering={FadeIn.duration(400)}
+          entering={FadeIn.duration(Motion.base)}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}>
 
           {/* Greeting */}
           <View style={styles.header}>
             <View style={styles.headerRow}>
-              <View style={styles.avatar}>
+              <View
+                style={[
+                  styles.avatar,
+                  {
+                    experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
+                    backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`,
+                  },
+                ]}>
                 <ThemedText type="h3" style={{ color: theme.white }}>
                   M
                 </ThemedText>
@@ -43,7 +50,7 @@ export default function HomeScreen() {
           </View>
 
           {/* Dominant Find Product CTA */}
-          <Animated.View entering={FadeInDown.duration(450).delay(80)}>
+          <Animated.View entering={FadeInDown.duration(Motion.slow).delay(80)}>
             <Card
               onPress={() => router.push('/find-product/camera')}
               accessibilityLabel="Find Product — take a photo to check the price"
@@ -52,6 +59,7 @@ export default function HomeScreen() {
                 {
                   borderRadius: Radius.xl,
                   borderColor: 'transparent',
+                  boxShadow: `0 14px 28px 0 ${theme.accentGlow}`,
                   experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
                   backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
                 },
@@ -72,7 +80,7 @@ export default function HomeScreen() {
 
           {/* Secondary quick actions */}
           <View style={styles.shortcuts}>
-            <Animated.View entering={FadeInUp.duration(350).delay(140)} style={styles.shortcutFlex}>
+            <Animated.View entering={FadeInUp.duration(Motion.base).delay(140)} style={styles.shortcutFlex}>
               <Card onPress={() => router.push('/admin/products/add')} padding="compact" style={styles.shortcutCard}>
                 <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
                   <Icon name="add-circle" size={22} color={theme.accent} />
@@ -85,7 +93,7 @@ export default function HomeScreen() {
                 </ThemedText>
               </Card>
             </Animated.View>
-            <Animated.View entering={FadeInUp.duration(350).delay(210)} style={styles.shortcutFlex}>
+            <Animated.View entering={FadeInUp.duration(Motion.base).delay(210)} style={styles.shortcutFlex}>
               <Card onPress={() => router.push('/(tabs)/products')} padding="compact" style={styles.shortcutCard}>
                 <View style={[styles.shortcutIcon, { backgroundColor: theme.accentSoft }]}>
                   <Icon name="grid" size={22} color={theme.accent} />
@@ -153,8 +161,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    experimental_backgroundImage: `linear-gradient(135deg, #2563EB, #EA580C)`,
-    backgroundImage: `linear-gradient(135deg, #2563EB, #EA580C)`,
   },
   headerText: {
     gap: Spacing.one / 2,
@@ -166,7 +172,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.four,
-    boxShadow: '0 12px 24px 0 rgba(37, 99, 235, 0.25)',
   },
   heroContent: {
     flex: 1,

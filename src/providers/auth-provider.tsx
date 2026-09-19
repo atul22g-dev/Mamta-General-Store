@@ -29,31 +29,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
 
-  const loadProfile = useCallback(async (current: Session | null) => {
-    if (!current) {
-      setProfile(null);
-      setStatus('unauthenticated');
-      return;
-    }
-    try {
+  /**
+   * Session exists but the profile is gone/unreadable (e.g. row deleted,
+   * RLS change) — treat as signed out rather than pretending.
+   */
+  const forceSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setProfile(null);
+    setSession(null);
+    setStatus('unauthenticated');
+  }, []);
+
+  const loadProfile = useCallback(
+    async (current: Session | null) => {
+      if (!current) {
+        setProfile(null);
+        setStatus('unauthenticated');
+        return;
+      }
+
+      // Branch on the error directly instead of throwing inside try — a
+      // shape the React Compiler cannot lower yet. Both failure paths
+      // (request error, missing row) recover by signing out.
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', current.user.id)
         .single();
 
-      if (error) throw error;
+      if (error || !data) {
+        await forceSignOut();
+        return;
+      }
+
       setProfile(data);
       setStatus('authenticated');
-    } catch {
-      // Session exists but the profile is gone/unreadable (e.g. row deleted,
-      // RLS change) — treat as signed out rather than pretending.
-      await supabase.auth.signOut();
-      setProfile(null);
-      setSession(null);
-      setStatus('unauthenticated');
-    }
-  }, []);
+    },
+    [forceSignOut],
+  );
 
   useEffect(() => {
     // Restore the persisted session (expo-sqlite localStorage).

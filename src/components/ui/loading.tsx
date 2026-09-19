@@ -31,16 +31,16 @@ export function Loading({ text, size = 'large', style }: LoadingProps) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withRepeat(
-      withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
+    // Compiler-compatible shared-value accessors (.set/.get) — direct
+    // .value writes are a mutation the React Compiler cannot optimize.
+    progress.set(
+      withRepeat(withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }), -1, true),
     );
   }, [progress]);
 
   const pulse = useAnimatedStyle(() => ({
-    opacity: 0.35 + 0.65 * progress.value,
-    transform: [{ scale: 0.85 + 0.15 * progress.value }],
+    opacity: 0.35 + 0.65 * progress.get(),
+    transform: [{ scale: 0.85 + 0.15 * progress.get() }],
   }));
 
   return (

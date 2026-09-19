@@ -13,6 +13,10 @@ create table public.profiles (
   created_at timestamptz not null default now()
 );
 
+-- RLS is enabled at creation so the table is never exposed without it;
+-- policies are defined in 0003_rls.sql.
+alter table public.profiles enable row level security;
+
 comment on table public.profiles is 'Store user profiles; 1:1 with auth.users.';
 
 create index profiles_role_idx on public.profiles (role);

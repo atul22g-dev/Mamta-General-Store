@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -15,7 +15,71 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { useProductList } from '@/hooks/use-product-list';
+import { useProductList, type ProductListStatus } from '@/hooks/use-product-list';
+import type { ProductWithImages } from '@/lib/products/product-service';
+
+/** Vertical gap between product rows (FlatList separator). */
+function RowSeparator() {
+  return <View style={styles.rowSeparator} />;
+}
+
+/**
+ * Loading / error / empty panel shown when the list has no rows.
+ * Extracted so the screen stays a thin data-list wrapper.
+ */
+function AdminListStates({
+  loading,
+  status,
+  errorMessage,
+  hasSearch,
+  search,
+  onRetry,
+  onAdd,
+}: {
+  loading: boolean;
+  status: ProductListStatus;
+  errorMessage: string | null;
+  hasSearch: boolean;
+  search: string;
+  onRetry: () => void;
+  onAdd: () => void;
+}) {
+  const theme = useTheme();
+
+  if (loading) {
+    return <Loading text="Loading products…" />;
+  }
+  if (status === 'error') {
+    return (
+      <ErrorState description={errorMessage ?? 'Failed to load products.'} onRetry={onRetry} />
+    );
+  }
+  if (status === 'ready' && !hasSearch) {
+    return (
+      <EmptyState
+        title="No products yet"
+        description="Add your first product to start building the catalog."
+        action={
+          <Button
+            title="Add Product"
+            icon={<Icon name="add" size={18} color={theme.white} />}
+            onPress={onAdd}
+          />
+        }
+      />
+    );
+  }
+  if (status === 'ready') {
+    return (
+      <EmptyState
+        title="No matches"
+        description={`Nothing matches “${search.trim()}”. Try a different search.`}
+        icon={<Icon name="search" size={26} color={theme.accent} />}
+      />
+    );
+  }
+  return null;
+}
 
 /**
  * Admin product management screen — real catalog from Supabase with
@@ -95,8 +159,39 @@ export default function AdminProductsScreen() {
             </ThemedText>
           )}
 
-          {/* Body */}
-          <ScrollView
+          {/* Body — virtualized: only the visible rows mount */}
+          <FlatList
+            data={products}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }: { item: ProductWithImages; index: number }) => (
+              <ProductRow
+                product={item}
+                index={index}
+                deleting={deletingId === item.id}
+                onPress={() =>
+                  router.push({ pathname: '/admin/products/[id]', params: { id: item.id } })
+                }
+                onEdit={() =>
+                  router.push({
+                    pathname: '/admin/products/[id]/edit',
+                    params: { id: item.id },
+                  })
+                }
+                onDelete={() => setPendingDelete({ id: item.id, name: item.name })}
+              />
+            )}
+            ItemSeparatorComponent={RowSeparator}
+            ListEmptyComponent={
+              <AdminListStates
+                loading={loading}
+                status={status}
+                errorMessage={errorMessage}
+                hasSearch={hasSearch}
+                search={search}
+                onRetry={() => void refresh()}
+                onAdd={() => router.push('/admin/products/add')}
+              />
+            }
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -107,57 +202,8 @@ export default function AdminProductsScreen() {
                 tintColor={theme.accent}
                 colors={[theme.accent]}
               />
-            }>
-            {loading && <Loading text="Loading products…" />}
-
-            {status === 'error' && (
-              <ErrorState
-                description={errorMessage ?? 'Failed to load products.'}
-                onRetry={() => void refresh()}
-              />
-            )}
-
-            {status === 'ready' && products.length === 0 && !hasSearch && (
-              <EmptyState
-                title="No products yet"
-                description="Add your first product to start building the catalog."
-                action={
-                  <Button
-                    title="Add Product"
-                    icon={<Icon name="add" size={18} color={theme.white} />}
-                    onPress={() => router.push('/admin/products/add')}
-                  />
-                }
-              />
-            )}
-
-            {status === 'ready' && products.length === 0 && hasSearch && (
-              <EmptyState
-                title="No matches"
-                description={`Nothing matches “${search.trim()}”. Try a different search.`}
-                icon={<Icon name="search" size={26} color={theme.accent} />}
-              />
-            )}
-
-            {products.map((product, index) => (
-              <ProductRow
-                key={product.id}
-                product={product}
-                index={index}
-                deleting={deletingId === product.id}
-                onPress={() =>
-                  router.push({ pathname: '/admin/products/[id]', params: { id: product.id } })
-                }
-                onEdit={() =>
-                  router.push({
-                    pathname: '/admin/products/[id]/edit',
-                    params: { id: product.id },
-                  })
-                }
-                onDelete={() => setPendingDelete({ id: product.id, name: product.name })}
-              />
-            ))}
-          </ScrollView>
+            }
+          />
         </View>
       </SafeAreaView>
 
@@ -202,12 +248,14 @@ const styles = StyleSheet.create({
     gap: Spacing.one / 2,
   },
   listContent: {
-    gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
     paddingBottom: Spacing.five,
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     width: '100%',
+  },
+  rowSeparator: {
+    height: Spacing.three,
   },
 });

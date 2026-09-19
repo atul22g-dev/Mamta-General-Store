@@ -17,15 +17,15 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withRepeat(
-      withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
+    // Compiler-compatible shared-value accessors (.set/.get) — direct
+    // .value writes are a mutation the React Compiler cannot optimize.
+    progress.set(
+      withRepeat(withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.ease) }), -1, true),
     );
   }, [progress]);
 
   const pulse = useAnimatedStyle(() => ({
-    opacity: 0.45 + 0.4 * progress.value,
+    opacity: 0.45 + 0.4 * progress.get(),
   }));
 
   return (

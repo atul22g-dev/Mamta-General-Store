@@ -1,4 +1,4 @@
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -19,10 +19,19 @@ import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
   UNIT_LABELS,
+  type ProductCategory,
   type ProductUnit,
 } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPrice } from '@/lib/format';
+
+/** Chip-row filter values: the implicit "All" filter + every category. */
+const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
+
+/** Vertical gap between result rows (FlatList separator). */
+function RowSeparator() {
+  return <View style={styles.rowSeparator} />;
+}
 
 /** Catalog result row: image, name, unit, current selling price. */
 function SearchResultRow({
@@ -136,25 +145,21 @@ export default function FindProductSearchScreen() {
           />
         </View>
 
-        {/* Category chips */}
-        <ScrollView
+        {/* Category chips (short fixed set, horizontal FlatList) */}
+        <FlatList
           horizontal
+          data={CHIP_FILTERS}
+          keyExtractor={(item) => item}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipRow}>
-          <Chip
-            label="All"
-            active={category === 'all'}
-            onPress={() => setCategory('all')}
-          />
-          {PRODUCT_CATEGORIES.map((cat) => (
+          contentContainerStyle={styles.chipRow}
+          renderItem={({ item }) => (
             <Chip
-              key={cat}
-              label={CATEGORY_LABELS[cat]}
-              active={category === cat}
-              onPress={() => setCategory(cat)}
+              label={item === 'all' ? 'All' : CATEGORY_LABELS[item]}
+              active={category === item}
+              onPress={() => setCategory(item)}
             />
-          ))}
-        </ScrollView>
+          )}
+        />
 
         {/* Body */}
         {loading && <SkeletonList count={6} style={styles.skeletonList} />}
@@ -169,21 +174,25 @@ export default function FindProductSearchScreen() {
         )}
 
         {hasResults && (
-          <ScrollView
+          <FlatList
+            data={products}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }) => (
+              <Animated.View
+                entering={FadeInDown.duration(250).delay(Math.min(index, 8) * 40)}>
+                <SearchResultRow product={item} onPress={() => handleSelect(item)} />
+              </Animated.View>
+            )}
+            ListHeaderComponent={
+              <ThemedText type="caption" themeColor="textTertiary" style={styles.countLine}>
+                {products.length} {products.length === 1 ? 'product' : 'products'}
+              </ThemedText>
+            }
+            ItemSeparatorComponent={RowSeparator}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled">
-            <ThemedText type="caption" themeColor="textTertiary">
-              {products.length} {products.length === 1 ? 'product' : 'products'}
-            </ThemedText>
-            {products.map((product, index) => (
-              <Animated.View
-                key={product.id}
-                entering={FadeInDown.duration(250).delay(Math.min(index, 8) * 40)}>
-                <SearchResultRow product={product} onPress={() => handleSelect(product)} />
-              </Animated.View>
-            ))}
-          </ScrollView>
+            keyboardShouldPersistTaps="handled"
+          />
         )}
 
         {status === 'ready' && products.length === 0 && (
@@ -266,6 +275,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
+  },
+  countLine: {
+    paddingBottom: Spacing.two,
+  },
+  rowSeparator: {
+    height: Spacing.two,
   },
   chip: {
     minHeight: 44,

@@ -15,6 +15,17 @@ type BadgeProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+type ThemeTokens = ReturnType<typeof useTheme>;
+
+/** Each variant's soft background + strong foreground token pair. */
+const COLORS: Record<BadgeVariant, { bg: (t: ThemeTokens) => string; fg: (t: ThemeTokens) => string }> = {
+  neutral: { bg: (t) => t.surfaceSecondary, fg: (t) => t.textSecondary },
+  accent: { bg: (t) => t.accentSoft, fg: (t) => t.accentDark },
+  success: { bg: (t) => t.successSoft, fg: (t) => t.success },
+  warning: { bg: (t) => t.warningSoft, fg: (t) => t.warning },
+  error: { bg: (t) => t.errorSoft, fg: (t) => t.error },
+};
+
 /**
  * Status pill with soft tinted background + strong label color.
  * Optional leading dot for live status semantics.
@@ -22,38 +33,19 @@ type BadgeProps = {
 export function Badge({ label, variant = 'neutral', size = 'md', dot = false, style }: BadgeProps) {
   const theme = useTheme();
 
-  const bg =
-    variant === 'neutral'
-      ? theme.surfaceSecondary
-      : variant === 'accent'
-        ? theme.accentSoft
-        : variant === 'success'
-          ? theme.successSoft
-          : variant === 'warning'
-            ? theme.warningSoft
-            : theme.errorSoft;
-
-  const fg =
-    variant === 'neutral'
-      ? theme.textSecondary
-      : variant === 'accent'
-        ? theme.accentDark
-        : variant === 'success'
-          ? theme.success
-          : variant === 'warning'
-            ? theme.warning
-            : theme.error;
+  // Table-driven token lookup replaces the nested conditional chain.
+  const { bg, fg } = COLORS[variant];
 
   return (
     <View
       style={[
         styles.badge,
         size === 'sm' && styles.sm,
-        { backgroundColor: bg },
+        { backgroundColor: bg(theme) },
         style,
       ]}>
-      {dot && <View style={[styles.dot, { backgroundColor: fg }]} />}
-      <ThemedText type="overline" style={{ color: fg }}>
+      {dot && <View style={[styles.dot, { backgroundColor: fg(theme) }]} />}
+      <ThemedText type="overline" style={{ color: fg(theme) }}>
         {label}
       </ThemedText>
     </View>

@@ -14,7 +14,7 @@ import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { matchSession } from '@/lib/visual-match/session';
 import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
-import type { MatchCandidateView } from '@/lib/visual-match/client';
+import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/client';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
 import { formatPrice } from '@/lib/format';
@@ -150,7 +150,9 @@ function MatchCard({
             <ThemedText type="overline" style={{ color: theme.accentDark }}>
               Selling price
             </ThemedText>
-            <ThemedText type="display" style={styles.priceValue}>
+            <ThemedText
+              type="display"
+              style={[styles.priceValue, { color: theme.accent }]}>
               {formatPrice(product.selling_price)}
             </ThemedText>
           </View>
@@ -233,6 +235,114 @@ function CandidateRow({
 }
 
 /**
+ * Header chrome for the match card, by how the product was chosen.
+ * A picked-from-list product is user-confirmed (warning tone); a direct
+ * high-confidence hit is the system's find (success tone).
+ */
+function cardHeader(selected: boolean, manual: boolean) {
+  if (selected || manual) {
+    return { icon: 'person' as const, title: 'You selected', tone: 'warning' as const };
+  }
+  return { icon: 'checkmark-circle' as const, title: 'Product Found ✓', tone: 'success' as const };
+}
+
+/**
+ * Derived presentation state for the result screen: which decision the
+ * backend made, which product the card shows (manual pick > selected
+ * candidate > top match), and which panel should render. Pure derivation
+ * extracted from the component body — no side effects, no hooks besides
+ * being called unconditionally from the screen.
+ */
+function useResultPresentation(
+  visual: ReturnType<typeof matchSession.getResult>,
+  manualProduct: ProductWithImages | null,
+  selected: MatchCandidateView | null,
+) {
+  const outcome = visual?.outcome ?? null;
+
+  // Decision uses the threshold the BACKEND used, so server-side tuning
+  // changes behavior with no app update. A below-threshold 'identified'
+  // still renders as ambiguous — the confidence invariant holds either way.
+  const decision = outcome ? analyzeMatchOutcome(outcome, outcome.threshold) : null;
+
+  const shownCandidate: ShownProduct | null = manualProduct
+    ? { product: manualProduct, similarity: null }
+    : selected
+      ? { product: selected.product, similarity: selected.similarity }
+      : decision?.kind === 'single' && outcome && outcome.candidates[0]
+        ? {
+            product: outcome.candidates[0].product,
+            similarity: outcome.candidates[0].similarity,
+          }
+        : null;
+
+  return {
+    outcome,
+    photo: visual?.photo ?? null,
+    shownCandidate,
+    isAmbiguous: decision?.kind === 'ambiguous' && !selected && !!outcome,
+    isNoMatch: decision?.kind === 'none',
+    selectedId: selected?.product.id ?? null,
+  };
+}
+
+/**
+ * Low-confidence panel: "Not completely sure" explanation, ranked
+ * candidate rows, and the manual-search fallback. Candidates are a small
+ * server-limited set — mapped rows in a plain View, intentionally not a
+ * separate virtualized list inside the screen's ScrollView.
+ */
+function AmbiguousCandidates({
+  outcome,
+  selectedId,
+  onSelect,
+  onSearchManually,
+}: {
+  outcome: VisualMatchOutcome;
+  selectedId: string | null;
+  onSelect: (candidate: MatchCandidateView) => void;
+  onSearchManually: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Animated.View entering={FadeInDown.duration(300)} style={styles.stack}>
+      <View style={styles.headerRow}>
+        <Icon name="help-circle" size={22} color={theme.warning} />
+        <ThemedText type="h3">Not completely sure</ThemedText>
+      </View>
+      <ThemedText type="bodySmall" themeColor="textSecondary">
+        Best confidence was {confidencePercent(outcome.confidence)}, below the{' '}
+        {confidencePercent(outcome.threshold)} threshold. Select the right product below — its
+        current price is shown after you pick.
+      </ThemedText>
+      <View style={styles.candidateList}>
+        {outcome.candidates.map((candidate) => (
+          <CandidateRow
+            key={candidate.product.id}
+            candidate={candidate}
+            selected={selectedId === candidate.product.id}
+            onSelect={() => onSelect(candidate)}
+          />
+        ))}
+      </View>
+
+      {/* Manual fallback */}
+      <View style={[styles.fallbackCard, { backgroundColor: theme.surfaceSecondary }]}>
+        <Icon name="search" size={18} color={theme.textSecondary} />
+        <View style={styles.fallbackText}>
+          <ThemedText type="smallBold">Can’t identify this product?</ThemedText>
+          <ThemedText type="caption" themeColor="textTertiary">
+            Look it up by name or category instead.
+          </ThemedText>
+        </View>
+        <Button title="Search Manually" size="sm" onPress={onSearchManually} />
+      </View>
+    </Animated.View>
+  );
+}
+
+/**
  * Final step of the scan flow. High confidence → "Product Found ✓" card
  * with the DB selling price as the visual centerpiece. Low confidence →
  * "Not completely sure" with ranked candidates, a manual-search fallback,
@@ -245,6 +355,8 @@ export default function FindProductResultScreen() {
   const visual = matchSession.getResult();
   const manualProduct = matchSession.getManualResult();
   const [selected, setSelected] = useState<MatchCandidateView | null>(null);
+  const { outcome, photo, shownCandidate, isAmbiguous, isNoMatch, selectedId } =
+    useResultPresentation(visual, manualProduct, selected);
 
   const handleDone = () => {
     matchSession.clear();
@@ -280,28 +392,7 @@ export default function FindProductResultScreen() {
     );
   }
 
-  const outcome = visual?.outcome ?? null;
-  const photo = visual?.photo ?? null;
-
-  // Decision uses the threshold the BACKEND used, so server-side tuning
-  // changes behavior with no app update. A below-threshold 'identified'
-  // still renders as ambiguous — the confidence invariant holds either way.
-  const decision = outcome ? analyzeMatchOutcome(outcome, outcome.threshold) : null;
-  const selectedId = selected?.product.id ?? null;
-
-  const shownCandidate: ShownProduct | null = manualProduct
-    ? { product: manualProduct, similarity: null }
-    : selected
-      ? { product: selected.product, similarity: selected.similarity }
-      : decision?.kind === 'single' && outcome && outcome.candidates[0]
-        ? {
-            product: outcome.candidates[0].product,
-            similarity: outcome.candidates[0].similarity,
-          }
-        : null;
-
-  const isAmbiguous = decision?.kind === 'ambiguous' && !selected && !!outcome;
-  const isNoMatch = decision?.kind === 'none';
+  const header = cardHeader(!!selected, !!manualProduct);
 
   return (
     <ThemedView style={styles.grow}>
@@ -314,11 +405,9 @@ export default function FindProductResultScreen() {
             <Animated.View entering={FadeInDown.duration(300)}>
               <MatchCard
                 shown={shownCandidate}
-                headerIcon={selected || manualProduct ? 'person' : 'checkmark-circle'}
-                headerTitle={
-                  selected || manualProduct ? 'You selected' : 'Product Found ✓'
-                }
-                headerTone={selected || manualProduct ? 'warning' : 'success'}
+                headerIcon={header.icon}
+                headerTitle={header.title}
+                headerTone={header.tone}
               />
               {selected && (
                 <Button
@@ -333,39 +422,12 @@ export default function FindProductResultScreen() {
 
           {/* Low confidence — "Not completely sure" */}
           {isAmbiguous && outcome && (
-            <Animated.View entering={FadeInDown.duration(300)} style={styles.stack}>
-              <View style={styles.headerRow}>
-                <Icon name="help-circle" size={22} color={theme.warning} />
-                <ThemedText type="h3">Not completely sure</ThemedText>
-              </View>
-              <ThemedText type="bodySmall" themeColor="textSecondary">
-                Best confidence was {confidencePercent(outcome.confidence)}, below the{' '}
-                {confidencePercent(outcome.threshold)} threshold. Select the right product below —
-                its current price is shown after you pick.
-              </ThemedText>
-              <View style={styles.candidateList}>
-                {outcome.candidates.map((candidate) => (
-                  <CandidateRow
-                    key={candidate.product.id}
-                    candidate={candidate}
-                    selected={selectedId === candidate.product.id}
-                    onSelect={() => setSelected(candidate)}
-                  />
-                ))}
-              </View>
-
-              {/* Manual fallback */}
-              <View style={[styles.fallbackCard, { backgroundColor: theme.surfaceSecondary }]}>
-                <Icon name="search" size={18} color={theme.textSecondary} />
-                <View style={styles.fallbackText}>
-                  <ThemedText type="smallBold">Can’t identify this product?</ThemedText>
-                  <ThemedText type="caption" themeColor="textTertiary">
-                    Look it up by name or category instead.
-                  </ThemedText>
-                </View>
-                <Button title="Search Manually" size="sm" onPress={handleSearchManually} />
-              </View>
-            </Animated.View>
+            <AmbiguousCandidates
+              outcome={outcome}
+              selectedId={selectedId}
+              onSelect={setSelected}
+              onSearchManually={handleSearchManually}
+            />
           )}
 
           {/* No match */}
@@ -475,7 +537,6 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   priceValue: {
-    color: '#2563EB',
     letterSpacing: -1,
   },
   statRow: {
