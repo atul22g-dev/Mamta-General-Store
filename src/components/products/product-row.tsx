@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
+import { PriceText } from '@/components/ui/price-text';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 const THUMB = 56;
@@ -82,9 +83,9 @@ export function ProductRow({
               {CATEGORY_LABELS[product.category as ProductCategory] ?? product.category}
             </ThemedText>
             <View style={styles.priceRow}>
-              <ThemedText type="smallBold" style={{ color: theme.accent }}>
+              <PriceText variant="compact">
                 {formatPriceWithUnit(product.selling_price, product.unit)}
-              </ThemedText>
+              </PriceText>
               {product.mrp !== product.selling_price && (
                 <ThemedText
                   type="caption"

@@ -19,6 +19,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useProductDetail } from '@/hooks/use-product-detail';
 import { deleteProduct } from '@/lib/products/product-service';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
+import { PriceText } from '@/components/ui/price-text';
 import { alert } from '@/lib/alert';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
@@ -93,9 +94,9 @@ function PriceCard({ product }: { product: ProductWithImages }) {
           <ThemedText type="caption" themeColor="textTertiary">
             Selling price
           </ThemedText>
-          <ThemedText type="h1" style={{ color: theme.accent }}>
+          <PriceText variant="hero">
             {formatPriceWithUnit(product.selling_price, product.unit)}
-          </ThemedText>
+          </PriceText>
         </View>
         {hasDiscount && (
           <View style={styles.priceAside}>

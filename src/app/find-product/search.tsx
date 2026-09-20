@@ -24,6 +24,7 @@ import {
 } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPriceWithUnit } from '@/lib/format';
+import { PriceText } from '@/components/ui/price-text';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
@@ -77,9 +78,9 @@ function SearchResultRow({
       </View>
 
       {/* Current DB price — the only source, as everywhere in the flow. */}
-      <ThemedText type="h3" style={{ color: theme.accent }}>
+      <PriceText variant="card">
         {formatPriceWithUnit(product.selling_price, product.unit)}
-      </ThemedText>
+      </PriceText>
     </Pressable>
   );
 }
@@ -146,13 +147,16 @@ export default function FindProductSearchScreen() {
           />
         </View>
 
-        {/* Category chips (short fixed set, horizontal FlatList) */}
+        {/* Category chips (short fixed set, horizontal FlatList).
+            flexGrow: 0 — without it the horizontal list stretches its
+            rows to fill available vertical space (giant pill bug). */}
         <FlatList
           horizontal
           data={CHIP_FILTERS}
           keyExtractor={(item) => item}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipRow}
+          style={styles.chipList}
           renderItem={({ item }) => (
             <Chip
               label={item === 'all' ? 'All' : CATEGORY_LABELS[item]}
@@ -276,6 +280,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
+  },
+  chipList: {
+    flexGrow: 0,
   },
   countLine: {
     paddingBottom: Spacing.two,

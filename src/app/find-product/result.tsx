@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PriceText } from '@/components/ui/price-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
@@ -151,11 +152,9 @@ function MatchCard({
             <ThemedText type="overline" style={{ color: theme.accentDark }}>
               Selling price
             </ThemedText>
-            <ThemedText
-              type="display"
-              style={[styles.priceValue, { color: theme.accent }]}>
+            <PriceText variant="hero" style={styles.priceValue}>
               {formatPriceWithUnit(product.selling_price, product.unit)}
-            </ThemedText>
+            </PriceText>
           </View>
 
           {/* Stock + Match stats (Match hidden for manual picks) */}
@@ -230,6 +229,7 @@ function CandidateRow({
         variant={selected ? 'secondary' : 'primary'}
         onPress={onSelect}
         disabled={selected}
+        accessibilityLabel={`Select ${candidate.product.name}, ${confidencePercent(candidate.similarity)} similar`}
       />
     </View>
   );
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   priceValue: {
-    letterSpacing: -1,
+    // Size/weight/tracking now come from the PriceText hero variant.
   },
   statRow: {
     flexDirection: 'row',

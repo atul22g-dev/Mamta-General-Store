@@ -20,6 +20,7 @@ import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Typography } from '@/
 import { useTheme } from '@/hooks/use-theme';
 import { useProductSearch } from '@/hooks/use-product-search';
 import { formatPriceWithUnit } from '@/lib/format';
+import { PriceText } from '@/components/ui/price-text';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
@@ -84,9 +85,9 @@ function CatalogCard({
           </ThemedText>
         </View>
 
-        <ThemedText type="h3" style={{ color: theme.accent }}>
+        <PriceText variant="card">
           {formatPriceWithUnit(product.selling_price, product.unit)}
-        </ThemedText>
+        </PriceText>
       </Pressable>
     </Animated.View>
   );
@@ -146,13 +147,15 @@ export default function ProductsScreen() {
         accessibilityLabel="Search catalog by product name"
       />
 
-      {/* Category chips (short fixed set, horizontal FlatList) */}
+      {/* Category chips (short fixed set, horizontal FlatList).
+          flexGrow: 0 — keeps rows from stretching vertically. */}
       <FlatList
         horizontal
         data={CHIP_FILTERS}
         keyExtractor={(item) => item}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
+        style={styles.chipList}
         renderItem={({ item }) => (
           <Chip
             label={item === 'all' ? 'All' : CATEGORY_LABELS[item]}
@@ -278,6 +281,9 @@ const styles = StyleSheet.create({
   chipsRow: {
     gap: Spacing.two,
     paddingVertical: Spacing.one,
+  },
+  chipList: {
+    flexGrow: 0,
   },
   chip: {
     minHeight: 44,

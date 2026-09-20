@@ -29,8 +29,14 @@ create policy "product images are publicly readable"
 
 -- 3. Authenticated staff/admins may upload, but ONLY into a folder named
 --    after an existing product id (product-images/<product_id>/<file>).
---    This is what was missing — without it uploads are rejected with
+--
+--    ⚠ COLUMN-QUALIFICATION BUG FIX: the original policy compared against
+--    `(storage.foldername(name))[1]` with an UNQUALIFIED `name` while the
+--    subquery queried `products p` — so `name` silently bound to `p.name`
+--    (the product's display name, e.g. "Smily Face Ball"), never matching
+--    the product id, and EVERY upload was rejected with
 --    "new row violates row-level security policy".
+--    Fix: qualify the outer column as `storage.objects.name`.
 drop policy if exists "staff can upload product images" on storage.objects;
 create policy "staff can upload product images"
   on storage.objects for insert
@@ -39,7 +45,7 @@ create policy "staff can upload product images"
     bucket_id = 'product-images'
     and exists (
       select 1 from public.products p
-      where p.id::text = (storage.foldername(name))[1]
+      where p.id::text = (storage.foldername(storage.objects.name))[1]
     )
   );
 

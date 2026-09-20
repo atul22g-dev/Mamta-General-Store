@@ -23,10 +23,7 @@ export type ThemedTextProps = TextProps & {
     | 'overline'
     | 'small'
     | 'smallBold'
-    | 'subtitle'
-    | 'title'
     | 'link'
-    | 'linkPrimary'
     | 'code';
   themeColor?: ThemeColor;
 };
@@ -62,24 +59,9 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '500',
   },
-  title: {
-    fontSize: 48,
-    fontWeight: '600',
-    lineHeight: 52,
-  },
-  subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: '600',
-  },
   link: {
     lineHeight: 30,
     fontSize: 14,
-  },
-  linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
   },
   code: {
     fontFamily: Fonts.mono,
@@ -89,15 +71,12 @@ const styles = StyleSheet.create({
 });
 
 /** type → style. Typography-scale types come from the scale; the rest
- *  from the legacy sheet below (title renders unstyled, as before). */
+ *  from the legacy sheet below. */
 const TYPE_STYLE: Record<NonNullable<ThemedTextProps['type']>, TextStyle | undefined> = {
   default: styles.default,
   small: styles.small,
   smallBold: styles.smallBold,
-  subtitle: styles.subtitle,
-  title: undefined,
   link: styles.link,
-  linkPrimary: styles.linkPrimary,
   code: styles.code,
   display: Typography.display,
   h1: Typography.h1,
