@@ -77,6 +77,18 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
         throw new Error('Embedding provider returned an unexpected response shape.');
       }
 
+      // Guard the pgvector contract: never persist a vector whose dimension
+      // differs from the vector(512) column — a mismatch would break the
+      // HNSW index and every similarity query. Fail loudly instead.
+      const wrongDim = vectors.findIndex((v) => v.length !== EMBEDDING_DIMENSIONS);
+      if (wrongDim !== -1) {
+        throw new Error(
+          `Embedding provider returned ${vectors[wrongDim].length} dimensions ` +
+            `at index ${wrongDim}; expected ${EMBEDDING_DIMENSIONS}. ` +
+            'Update EMBEDDING_DIMENSIONS and the vector column together.',
+        );
+      }
+
       return { vectors, model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS };
     },
   };

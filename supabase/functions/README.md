@@ -32,12 +32,22 @@ injected automatically by the platform.
 
 ## Provider
 
+**Mistral is NOT used in this project** — neither for embeddings nor for any
+other AI operation. The sole AI provider is:
+
 `_shared/embedding.ts` wraps **Cohere `embed-v4.0`** at **512 dimensions**
-(`input_type: "image"`, data-URI inputs). To swap providers (OpenAI,
-self-hosted CLIP, …):
+(`input_type: "image"`, data-URI inputs), verified to match the pgvector
+column `vector(512)` exactly — a runtime guard in the same file fails
+loudly if a response ever arrives with a different dimension (no silent
+truncation/padding). To swap providers (OpenAI, self-hosted CLIP, …):
 
 1. Implement `EmbeddingProvider` in `_shared/embedding.ts`.
 2. Keep the output dimension equal to the pgvector column (`vector(512)`)
+   and update `EMBEDDING_DIMENSIONS` + the column together.
+
+If Mistral (or any other AI) is adopted later, it must follow the same
+rule as Cohere: **edge-function secret only** (`supabase secrets set …`),
+never an `EXPO_PUBLIC_` var, never inside the Expo bundle.
    or migrate the column + re-embed everything.
 3. Redeploy both functions. The app and the RPC need no changes.
 

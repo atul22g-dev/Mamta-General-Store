@@ -40,6 +40,7 @@ export default function ProtectedAdminLayout() {
       <Stack.Screen name="products/add" />
       <Stack.Screen name="products/[id]" />
       <Stack.Screen name="products/[id]/edit" />
+      <Stack.Screen name="staff" />
     </Stack>
   );
 }

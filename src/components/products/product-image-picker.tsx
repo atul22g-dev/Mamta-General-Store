@@ -8,6 +8,13 @@ import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 export type PickedImage = {
+  /**
+   * Stable per-image identity. Real images (already in Storage, edit mode)
+   * use the database row id; fresh picks get a generated id. React keys
+   * derive from this — NEVER the array index, which reassigns state across
+   * the wrong tiles when a middle image is removed.
+   */
+  id: string;
   /** Local file/content URI for preview + upload. */
   uri: string;
   /**
@@ -16,6 +23,11 @@ export type PickedImage = {
    */
   url?: string;
 };
+
+/** Fresh picks have no database row yet — mint a unique id at pick time. */
+function newPickedImageId(): string {
+  return `picked-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 type ProductImagePickerProps = {
   images: PickedImage[];
@@ -73,7 +85,7 @@ export function ProductImagePicker({
     });
 
     if (!result.canceled && result.assets[0]?.uri) {
-      onChange([...images, { uri: result.assets[0].uri }]);
+      onChange([...images, { id: newPickedImageId(), uri: result.assets[0].uri }]);
       setPermissionDenied(false);
     }
   };
@@ -90,14 +102,18 @@ export function ProductImagePicker({
     });
 
     if (!result.canceled && result.assets.length > 0) {
-      onChange([...images, ...result.assets.map((asset) => ({ uri: asset.uri }))]);
+      onChange([
+        ...images,
+        ...result.assets.map((asset) => ({ id: newPickedImageId(), uri: asset.uri })),
+      ]);
       setPermissionDenied(false);
     }
   };
 
-  const removeImage = (index: number) => {
+  /** Remove by stable id — index-based removal would shift with reordering. */
+  const removeImage = (imageId: string) => {
     if (disabled) return;
-    onChange(images.filter((_, i) => i !== index));
+    onChange(images.filter((image) => image.id !== imageId));
   };
 
   const showActions = !disabled && !atCapacity;
@@ -106,14 +122,14 @@ export function ProductImagePicker({
     <View style={style}>
       {images.length > 0 && (
         <View style={styles.previewRow}>
-          {images.map((image, index) => (
-            <View key={`${image.uri}-${index}`} style={styles.previewTile}>
+          {images.map((image) => (
+            <View key={image.id} style={styles.previewTile}>
               <Image source={{ uri: image.uri }} style={styles.previewImage} />
               {!disabled && (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove image ${index + 1}`}
-                  onPress={() => removeImage(index)}
+                  accessibilityLabel={`Remove image ${image.id}`}
+                  onPress={() => removeImage(image.id)}
                   style={({ pressed }) => [
                     styles.removeButton,
                     { backgroundColor: theme.error },

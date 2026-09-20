@@ -23,7 +23,13 @@
 -- ----------------------------------------------------------------------------
 -- 1. Default new profiles to NO role (must be explicitly granted)
 -- ----------------------------------------------------------------------------
+-- NOTE: the column must become NULLABLE, not merely default-null. 0001
+-- declares it NOT NULL DEFAULT 'staff'; keeping NOT NULL with a null
+-- default would make every trigger-created profile row fail its
+-- constraint on fresh databases. The app and RLS treat role=NULL as
+-- "no privileges" (see current_role()/is_admin()).
 alter table public.profiles
+  alter column role drop not null,
   alter column role set default null;
 
 -- ----------------------------------------------------------------------------

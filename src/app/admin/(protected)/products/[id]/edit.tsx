@@ -69,7 +69,11 @@ export default function AdminEditProductScreen() {
   const initialImages = useMemo<PickedImage[] | null>(
     () =>
       product
-        ? product.product_images.map((image) => ({ uri: image.image_url, url: image.image_url }))
+        ? product.product_images.map((image) => ({
+            id: image.id, // stable DB identity — React keys derive from this
+            uri: image.image_url,
+            url: image.image_url,
+          }))
         : null,
     [product],
   );

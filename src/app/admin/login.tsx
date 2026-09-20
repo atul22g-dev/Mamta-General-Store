@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -30,6 +30,7 @@ export default function AdminLoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repairNeeded, setRepairNeeded] = useState(false);
 
   const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canSubmit = emailIsValid && password.length >= 6 && !submitting;
@@ -59,6 +60,10 @@ export default function AdminLoginScreen() {
 
     if (!result.ok) {
       setError(result.error);
+      // A 500 during sign-in means the account's database row is malformed
+      // (hand-inserted without GoTrue's required columns). Surface the
+      // guided repair panel instead of leaving a dead-end message.
+      setRepairNeeded(result.error.startsWith('Server error while signing in'));
       return;
     }
     router.replace('/admin');
@@ -103,6 +108,7 @@ export default function AdminLoginScreen() {
               onChangeText={(text) => {
                 setEmail(text);
                 setError(null);
+                setRepairNeeded(false);
               }}
             />
             <Input
@@ -116,6 +122,7 @@ export default function AdminLoginScreen() {
               onChangeText={(text) => {
                 setPassword(text);
                 setError(null);
+                setRepairNeeded(false);
               }}
               rightIcon={
                 <IconButton
@@ -140,6 +147,37 @@ export default function AdminLoginScreen() {
                 <ThemedText type="caption" style={{ color: theme.error, flex: 1 }}>
                   {error}
                 </ThemedText>
+              </View>
+            )}
+
+            {repairNeeded && (
+              <View
+                style={[
+                  styles.repairPanel,
+                  { backgroundColor: theme.surfaceSecondary, borderColor: theme.border },
+                ]}>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'1. Open supabase/create-admin-user.sql in this project'}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'2. Paste it in the Supabase SQL Editor and run it (it repairs the admin login)'}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'3. Sign in with the password written in that file'}
+                </ThemedText>
+                <Button
+                  title="Open Supabase SQL Editor"
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => {
+                    const ref = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
+                      .replace('https://', '')
+                      .split('.')[0];
+                    void Linking.openURL(
+                      `https://supabase.com/dashboard/project/${ref}/sql/new`,
+                    );
+                  }}
+                />
               </View>
             )}
 
@@ -194,5 +232,15 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.three,
     borderRadius: Radius.md,
+  },
+  repairPanel: {
+    alignSelf: 'stretch',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  repairStep: {
+    alignSelf: 'stretch',
   },
 });

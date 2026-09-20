@@ -1,4 +1,5 @@
 import { RefreshControl, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,6 +8,7 @@ import { AdminCard } from '@/components/admin/admin-card';
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
 import { Loading } from '@/components/ui/loading';
+import { DatabaseIndicator } from '@/components/ui/database-indicator';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { SectionHeader } from '@/components/ui/section-header';
@@ -16,6 +18,7 @@ import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useAdminDashboard, stockStatus, LOW_STOCK_THRESHOLD } from '@/hooks/use-admin-dashboard';
+import { useDatabaseHealth } from '@/hooks/use-database-health';
 
 type StatTile = {
   label: string;
@@ -31,6 +34,15 @@ export default function AdminDashboardScreen() {
   const { profile } = useAuth();
   const { status, stats, recent, lowStockItems, errorMessage, refreshing, refresh, reload } =
     useAdminDashboard();
+  const database = useDatabaseHealth();
+
+  // While the dashboard's own data refreshes, piggyback a health recheck so
+  // the indicator reflects the same moment (one extra lightweight probe).
+  // recheck() only touches state from async callbacks, so it's effect-safe.
+  useEffect(() => {
+    if (refreshing) database.recheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshing]);
 
   const tiles: StatTile[] = [
     { label: 'Total Products', icon: 'cube-outline', value: stats.total, bg: theme.accentSoft, fg: theme.accent },
@@ -51,12 +63,15 @@ export default function AdminDashboardScreen() {
           }>
           {/* Header */}
           <View style={styles.header}>
-            <ThemedText type="h1" style={styles.title}>
-              Dashboard
-            </ThemedText>
-            <ThemedText type="bodySmall" themeColor="textSecondary">
-              {profile?.email ? `Signed in as ${profile.email}` : 'Store inventory at a glance'}
-            </ThemedText>
+            <View style={styles.headerText}>
+              <ThemedText type="h1" style={styles.title}>
+                Dashboard
+              </ThemedText>
+              <ThemedText type="bodySmall" themeColor="textSecondary">
+                {profile?.email ? `Signed in as ${profile.email}` : 'Store inventory at a glance'}
+              </ThemedText>
+            </View>
+            <DatabaseIndicator status={database.status} latencyMs={database.health.latencyMs} />
           </View>
 
           {status === 'loading' ? (
@@ -103,6 +118,12 @@ export default function AdminDashboardScreen() {
                   onPress={() => router.push('/admin/products')}
                   variant="secondary"
                   iconRight={<Icon name="chevron-forward" size={16} color={theme.text} />}
+                />
+                <Button
+                  title="Add Staff"
+                  onPress={() => router.push('/admin/staff')}
+                  variant="ghost"
+                  icon={<Icon name="person-add" size={18} color={theme.accent} />}
                 />
               </View>
 
@@ -196,6 +217,13 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
   },
   header: {
+    gap: Spacing.one / 2,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerText: {
+    flex: 1,
     gap: Spacing.one / 2,
   },
   title: Typography.h1,

@@ -7,9 +7,10 @@ import * as Application from 'expo-application';
 
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
-import { IconButton } from '@/components/ui/icon-button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DatabaseIndicator } from '@/components/ui/database-indicator';
+import { DatabaseStatusDialog } from '@/components/ui/database-status-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ThemedText } from '@/components/themed-text';
@@ -24,6 +25,7 @@ import {
 } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
+import { useDatabaseHealth } from '@/hooks/use-database-health';
 
 const APP_VERSION = Application.nativeApplicationVersion ?? '1.0.0';
 
@@ -95,8 +97,6 @@ function ActionRow({
 
 /** Account section body while the session is still being restored. */
 function AccountLoadingRow() {
-  const theme = useTheme();
-
   return (
     <View style={[styles.row, { minHeight: MinTouchTarget }]}>
       <Skeleton style={{ width: 44, height: 44, borderRadius: Radius.md }} />
@@ -117,19 +117,28 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { status, profile, isAdmin, signOut } = useAuth();
+  const database = useDatabaseHealth();
 
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [showDatabaseDialog, setShowDatabaseDialog] = useState(false);
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    // signOut clears session state in the provider; an unexpected rejection
+    // must still release the dialog — busy flag mirrored on every path,
+    // no try/finally (a shape the React Compiler cannot lower yet).
+    let signedOut = true;
     try {
       await signOut();
+    } catch {
+      signedOut = false;
+    }
+    setSigningOut(false);
+    if (signedOut) {
       setConfirmingLogout(false);
-      // Session cleared by the provider; land on the consumer home tab.
+      // Land on the consumer home tab after leaving the admin area.
       router.replace('/(tabs)');
-    } finally {
-      setSigningOut(false);
     }
   };
 
@@ -170,6 +179,34 @@ export default function SettingsScreen() {
               <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
 
               <InfoRow icon="phone-portrait" label="App version" value={APP_VERSION} />
+              <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
+              {/* Tappable: opens the status dialog explaining WHY offline. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Store database status"
+                accessibilityHint="Shows whether the database is connected and what is wrong if it is not"
+                onPress={() => {
+                  if (database.status === 'offline') database.recheck();
+                  setShowDatabaseDialog(true);
+                }}
+                style={({ pressed }) => [
+                  styles.row,
+                  { minHeight: MinTouchTarget },
+                  pressed && styles.rowPressed,
+                ]}>
+                <View style={[styles.rowIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="server" size={16} color={theme.accent} />
+                </View>
+                <ThemedText type="bodySmall" style={styles.rowLabel}>
+                  Store database
+                </ThemedText>
+                <DatabaseIndicator
+                  status={database.status}
+                  latencyMs={database.health.latencyMs}
+                  labeled={false}
+                />
+                <Icon name="chevron-forward" size={14} color={theme.textTertiary} />
+              </Pressable>
               <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
               <InfoRow icon="information-circle" label="About" value="Price lookup for shop floor" />
             </Card>
@@ -262,6 +299,15 @@ export default function SettingsScreen() {
           </Animated.View>
         </Animated.ScrollView>
       </SafeAreaView>
+
+      {/* Database status detail (why offline, latency when online) */}
+      <DatabaseStatusDialog
+        visible={showDatabaseDialog}
+        status={database.status}
+        health={database.health}
+        onClose={() => setShowDatabaseDialog(false)}
+        onRetry={() => database.recheck()}
+      />
 
       {/* Logout confirmation */}
       <ConfirmDialog
@@ -359,11 +405,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  accountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
   accountBadge: {
     width: 44,
     height: 44,
@@ -382,9 +423,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-  },
-  logoutButton: {
-    marginTop: Spacing.one,
   },
   footnote: {
     textAlign: 'center',

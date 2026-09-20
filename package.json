@@ -4,10 +4,10 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "lint": "expo lint",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest",
+    "db:deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@expo/ui": "~57.0.19",

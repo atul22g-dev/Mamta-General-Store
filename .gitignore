@@ -39,6 +39,7 @@ yarn-error.*
 *.tsbuildinfo
 
 example
+supabase/.temp
 
 # generated native folders
 /ios
