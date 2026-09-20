@@ -116,7 +116,7 @@ export default function FindProductPreviewScreen() {
           <View style={styles.metaRow}>
             <Icon name="checkmark-circle" size={16} color={theme.success} />
             <ThemedText type="caption" themeColor="textSecondary">
-              Photo captured{shot.capturedAt ? ` · ${new Date(shot.capturedAt).toLocaleTimeString()}` : ''}
+              Photo ready{shot.capturedAt ? ` · ${new Date(shot.capturedAt).toLocaleTimeString()}` : ''}
             </ThemedText>
           </View>
 
@@ -138,13 +138,13 @@ export default function FindProductPreviewScreen() {
               icon={<Icon name="arrow-forward" size={18} color={theme.white} />}
             />
             <Button
-              title="Retake"
+              title="Choose Another Photo"
               onPress={handleRetake}
               variant="secondary"
               block
               size="lg"
               disabled={submitState === 'submitting'}
-              icon={<Icon name="camera" size={18} color={theme.text} />}
+              icon={<Icon name="images" size={18} color={theme.text} />}
             />
           </View>
 

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { uuid } from '@/lib/uuid';
 import { escapeIlike } from '@/lib/products/image-plan';
 import { toUserMessage } from '@/lib/errors';
 import type { Product } from '@/types/database';
@@ -84,7 +85,7 @@ export async function uploadProductImage(
   // Derive a safe extension from the URI, defaulting to jpg.
   const match = /\.([a-zA-Z0-9]+)(?:[?#].*)?$/.exec(localUri);
   const ext = (match?.[1] ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const objectName = `${productId}/${crypto.randomUUID()}.${ext}`;
+  const objectName = `${productId}/${uuid()}.${ext}`;
 
   const { error: uploadError } = await supabase.storage
     .from('product-images')

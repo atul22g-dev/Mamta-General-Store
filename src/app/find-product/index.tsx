@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Icon, type IconName } from '@/components/ui/icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { alert } from '@/lib/alert';
+import { scanSession } from '@/lib/scan-session';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -19,6 +23,49 @@ const TIPS = [
 export default function FindProductScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const [picking, setPicking] = useState(false);
+
+  /**
+   * Gallery entry point — feeds the selected photo into the SAME pipeline
+   * the camera uses: scanSession.setShot(uri) → /find-product/preview →
+   * submitForMatching(). No second matching path is created.
+   */
+  const pickFromGallery = async () => {
+    if (picking) return; // guard against double taps
+    setPicking(true);
+
+    try {
+      const { granted, canAskAgain } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!granted) {
+        alert(
+          'Photo library permission needed',
+          canAskAgain
+            ? 'Allow photo access so you can pick a product picture from your gallery.'
+            : 'Photo access was permanently denied. Enable it in Settings → Permissions, then try again.',
+        );
+        return; // user denial is not a picker error — stay on screen, no crash
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], // JPG / JPEG / PNG / platform-supported HEIC
+        quality: 0.8, // matches the camera capture quality
+        selectionLimit: 1, // single photo per match, same as the camera
+        allowsMultipleSelection: false,
+      });
+
+      // Normal cancellation: silently stay on this screen.
+      if (result.canceled || !result.assets[0]?.uri) return;
+
+      // Same handoff the camera uses — the preview step is source-agnostic.
+      scanSession.setShot(result.assets[0].uri);
+      router.push('/find-product/preview');
+    } catch {
+      // Picker crash / platform error: tell the user, stay functional.
+      alert('Could not open the gallery', 'Please try again.');
+    } finally {
+      setPicking(false);
+    }
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -85,10 +132,19 @@ export default function FindProductScreen() {
               ]}>
               <Icon name="camera" size={24} color={theme.white} />
             </Pressable>
-            <View
-              style={[styles.galleryTile, { backgroundColor: theme.surfaceSecondary }]}>
-              <Icon name="images" size={20} color={theme.textSecondary} />
-            </View>
+            <Pressable
+              onPress={() => void pickFromGallery()}
+              disabled={picking}
+              accessibilityRole="button"
+              accessibilityLabel="Pick a product photo from the gallery"
+              accessibilityState={{ busy: picking }}
+              style={({ pressed }) => [
+                styles.galleryTile,
+                { backgroundColor: theme.surfaceSecondary },
+                pressed && styles.galleryTilePressed,
+              ]}>
+              <Icon name="images" size={20} color={theme.accent} />
+            </Pressable>
           </View>
 
           {/* Tips */}
@@ -193,6 +249,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  galleryTilePressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.95 }],
   },
   shutterPressed: {
     opacity: 0.85,

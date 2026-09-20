@@ -29,6 +29,7 @@ import {
 } from '@/lib/products/product-validation';
 import { matchSession } from '@/lib/visual-match/session';
 import type { ProductWithImages } from '@/lib/products/product-service';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
@@ -49,7 +50,7 @@ function CatalogCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
 
   return (
     <Animated.View entering={FadeInDown.duration(280).delay(Math.min(index, 8) * 45)}>

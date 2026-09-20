@@ -24,6 +24,7 @@ import {
 } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPriceWithUnit } from '@/lib/format';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
@@ -42,7 +43,7 @@ function SearchResultRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const unitLabel = UNIT_LABELS[product.unit as ProductUnit] ?? product.unit;
 
   return (

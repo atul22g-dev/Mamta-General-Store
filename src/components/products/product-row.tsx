@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 const THUMB = 56;
 
@@ -45,7 +46,7 @@ export function ProductRow({
 }: ProductRowProps) {
   const theme = useTheme();
 
-  const firstImage = product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const initial = product.name.charAt(0).toUpperCase() || '?';
   const stock = stockStatus(product.stock);
 

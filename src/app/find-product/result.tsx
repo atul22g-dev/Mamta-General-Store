@@ -18,6 +18,7 @@ import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 function confidencePercent(similarity: number): string {
   return `${Math.round(similarity * 100)}%`;
@@ -87,7 +88,7 @@ function MatchCard({
   const theme = useTheme();
   const { product, similarity } = shown;
 
-  const firstImage = product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const stockLabel =
     product.stock === 0
       ? 'Out of stock'
@@ -193,7 +194,7 @@ function CandidateRow({
   onSelect: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = candidate.product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(candidate.product.product_images[0]?.image_url);
 
   return (
     <View

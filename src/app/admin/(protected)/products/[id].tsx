@@ -20,6 +20,7 @@ import { useProductDetail } from '@/hooks/use-product-detail';
 import { deleteProduct } from '@/lib/products/product-service';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 import { alert } from '@/lib/alert';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductImageRef, ProductWithImages } from '@/lib/products/product-service';
 
@@ -45,7 +46,7 @@ function ThumbStrip({ images }: { images: ProductImageRef[] }) {
       showsHorizontalScrollIndicator={false}
       style={styles.thumbStrip}
       renderItem={({ item }) => (
-        <Image source={{ uri: item.image_url }} style={styles.thumbImage} />
+        <Image source={{ uri: getProductImageUrl(item.image_url) ?? undefined }} style={styles.thumbImage} />
       )}
     />
   );
@@ -70,7 +71,7 @@ function ProductGallery({ product }: { product: ProductWithImages }) {
 
   return (
     <View style={[styles.gallery, Shadows.sm]}>
-      <Image source={{ uri: hero.image_url }} style={styles.heroImage} />
+      <Image source={{ uri: getProductImageUrl(hero.image_url) ?? undefined }} style={styles.heroImage} />
       {product.product_images.length > 1 && <ThumbStrip images={product.product_images} />}
     </View>
   );
