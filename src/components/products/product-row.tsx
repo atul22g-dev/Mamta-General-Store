@@ -7,7 +7,7 @@ import { Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
-import { formatPrice } from '@/lib/format';
+import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 
 const THUMB = 56;
 
@@ -82,7 +82,7 @@ export function ProductRow({
             </ThemedText>
             <View style={styles.priceRow}>
               <ThemedText type="smallBold" style={{ color: theme.accent }}>
-                {formatPrice(product.selling_price)}
+                {formatPriceWithUnit(product.selling_price, product.unit)}
               </ThemedText>
               {product.mrp !== product.selling_price && (
                 <ThemedText

@@ -23,7 +23,7 @@ import {
   type ProductUnit,
 } from '@/lib/products/product-validation';
 import type { ProductWithImages } from '@/lib/products/product-service';
-import { formatPrice } from '@/lib/format';
+import { formatPriceWithUnit } from '@/lib/format';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
@@ -77,7 +77,7 @@ function SearchResultRow({
 
       {/* Current DB price — the only source, as everywhere in the flow. */}
       <ThemedText type="h3" style={{ color: theme.accent }}>
-        {formatPrice(product.selling_price)}
+        {formatPriceWithUnit(product.selling_price, product.unit)}
       </ThemedText>
     </Pressable>
   );

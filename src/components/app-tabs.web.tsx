@@ -1,4 +1,4 @@
-import { Platform, Pressable, View, StyleSheet } from 'react-native';
+import { Platform, Pressable, View, StyleSheet, useWindowDimensions } from 'react-native';
 import {
   Tabs,
   TabList,
@@ -49,6 +49,7 @@ export function TabButton({
   ...props
 }: TabTriggerSlotProps & { icon: IconName; activeIcon: IconName }) {
   const theme = useTheme();
+  const isNarrow = useWindowDimensions().width < 480;
 
   return (
     <Pressable
@@ -61,6 +62,7 @@ export function TabButton({
         style={[
           styles.tabButtonView,
           isWeb && { transitionProperty: 'background-color', transitionDuration: '150ms' },
+          isNarrow && styles.tabButtonViewCompact,
           {
             backgroundColor: isFocused ? theme.accentSoft : 'transparent',
             borderRadius: Radius.full,
@@ -83,6 +85,7 @@ export function TabButton({
 
 export function CustomTabList(props: TabListProps) {
   const theme = useTheme();
+  const isNarrow = useWindowDimensions().width < 480;
 
   return (
     <View {...props} style={styles.tabListContainer}>
@@ -97,15 +100,18 @@ export function CustomTabList(props: TabListProps) {
             backdropFilter: 'saturate(180%) blur(20px)',
           },
         ]}>
-        {/* Brand mark */}
+        {/* Brand mark — full name only when the bar has room for it.
+            On narrow phones the page header already carries the name. */}
         <View style={[styles.logoMark, { experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`, backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})` }]}>
           <ThemedText type="smallBold" style={{ color: theme.white, fontSize: 12 }}>
             M
           </ThemedText>
         </View>
-        <ThemedText type="smallBold" style={styles.brandText}>
-          Mamta General Store
-        </ThemedText>
+        {!isNarrow && (
+          <ThemedText type="smallBold" style={styles.brandText} numberOfLines={1}>
+            Mamta General Store
+          </ThemedText>
+        )}
 
         {props.children}
       </ThemedView>
@@ -144,6 +150,7 @@ const styles = StyleSheet.create({
   },
   brandText: {
     marginRight: 'auto',
+    flexShrink: 1,
   },
   pressed: {
     opacity: 0.7,
@@ -154,5 +161,9 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
+  },
+  tabButtonViewCompact: {
+    paddingHorizontal: Spacing.two,
+    gap: Spacing.one / 2,
   },
 });

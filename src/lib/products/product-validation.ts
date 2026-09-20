@@ -1,42 +1,22 @@
 /**
  * Product form validation — pure functions, no React/Supabase imports,
  * so the rules are unit-testable in isolation.
+ *
+ * Categories & units are NOT defined here — they come from the editable
+ * config: src/config/products.ts (this file re-exports them so existing
+ * imports keep working).
  */
 
-export const PRODUCT_CATEGORIES = [
-  'groceries',
-  'snacks',
-  'household',
-  'beverages',
-  'personal_care',
-  'dairy',
-  'other',
-] as const;
+import type { ProductCategory, ProductUnit } from '@/config/products';
 
-export const PRODUCT_UNITS = ['piece', 'kg', 'gram', 'litre', 'ml', 'pack', 'dozen'] as const;
-
-export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
-export type ProductUnit = (typeof PRODUCT_UNITS)[number];
-
-export const CATEGORY_LABELS: Record<ProductCategory, string> = {
-  groceries: 'Groceries',
-  snacks: 'Snacks',
-  household: 'Household',
-  beverages: 'Beverages',
-  personal_care: 'Personal Care',
-  dairy: 'Dairy',
-  other: 'Other',
-};
-
-export const UNIT_LABELS: Record<ProductUnit, string> = {
-  piece: 'Piece',
-  kg: 'Kilogram',
-  gram: 'Gram',
-  litre: 'Litre',
-  ml: 'Millilitre',
-  pack: 'Pack',
-  dozen: 'Dozen',
-};
+export {
+  PRODUCT_CATEGORIES,
+  PRODUCT_UNITS,
+  CATEGORY_LABELS,
+  UNIT_LABELS,
+  type ProductCategory,
+  type ProductUnit,
+} from '@/config/products';
 
 export type ProductFormValues = {
   name: string;

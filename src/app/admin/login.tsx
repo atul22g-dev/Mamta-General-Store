@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 
 import { Icon } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
+import { alert } from '@/lib/alert';
 
 /**
  * Admin sign-in. Real Supabase email/password auth:
@@ -35,10 +36,11 @@ export default function AdminLoginScreen() {
   const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canSubmit = emailIsValid && password.length >= 6 && !submitting;
 
-  // Already signed in as admin? Send them straight in.
+  // Already signed in as admin? Send them straight in. <Redirect> performs
+  // the navigation in an effect — calling router.replace() directly here
+  // would update the navigator DURING render (web hard-crashes on it).
   if (status === 'authenticated' && isAdmin) {
-    router.replace('/admin');
-    return null;
+    return <Redirect href="/admin" />;
   }
 
   const handleSignIn = async () => {
@@ -173,9 +175,17 @@ export default function AdminLoginScreen() {
                     const ref = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
                       .replace('https://', '')
                       .split('.')[0];
-                    void Linking.openURL(
+                    // openURL rejects when no handler exists (e.g. no browser
+                    // registered) — an unhandled rejection here would crash
+                    // the app in dev and warn in production.
+                    Linking.openURL(
                       `https://supabase.com/dashboard/project/${ref}/sql/new`,
-                    );
+                    ).catch(() => {
+                      alert(
+                        'Could not open the browser',
+                        'Open supabase.com/dashboard in your browser and go to the SQL Editor manually.',
+                      );
+                    });
                   }}
                 />
               </View>

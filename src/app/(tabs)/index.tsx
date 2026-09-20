@@ -10,10 +10,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, WebTopBarInset, MaxContentWidth, Spacing, Radius, Typography, Motion } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+import { useResponsive } from '@/hooks/use-responsive';
 
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const responsive = useResponsive();
 
   return (
     <ThemedView style={styles.container}>
@@ -40,7 +42,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.headerText}>
                 <ThemedText type="bodySmall" themeColor="textSecondary">
-                  Good day 👋
+                  Welcome back
                 </ThemedText>
                 <ThemedText type="h2" style={styles.brand}>
                   Mamta General Store
@@ -58,6 +60,7 @@ export default function HomeScreen() {
                 styles.heroCard,
                 {
                   borderRadius: Radius.xl,
+                  padding: responsive.heroPadding,
                   borderColor: 'transparent',
                   boxShadow: `0 14px 28px 0 ${theme.accentGlow}`,
                   experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent} 0%, ${theme.accentDark} 100%)`,
@@ -68,11 +71,17 @@ export default function HomeScreen() {
                 <ThemedText type="overline" style={styles.heroOverline}>
                   Scan to price
                 </ThemedText>
-                <ThemedText type="h1" style={styles.heroTitle}>
+                <ThemedText
+                  type="h1"
+                  style={[
+                    styles.heroTitle,
+                    { fontSize: responsive.heroTitleSize, lineHeight: responsive.heroTitleSize * 1.15 },
+                  ]}
+                  numberOfLines={1}>
                   Find Product
                 </ThemedText>
               </View>
-              <View style={[styles.heroIcon, { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
+              <View style={[styles.heroIcon, { backgroundColor: 'rgba(255,255,255,0.22)', width: responsive.heroIconSize, height: responsive.heroIconSize }]}>
                 <Icon name="camera" size={30} color={theme.white} />
               </View>
             </Card>
@@ -167,7 +176,6 @@ const styles = StyleSheet.create({
   },
   brand: Typography.h2,
   heroCard: {
-    padding: Spacing.five,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

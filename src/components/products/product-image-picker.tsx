@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Icon } from '@/components/ui/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+import { alert } from '@/lib/alert';
 
 export type PickedImage = {
   /**
@@ -61,7 +62,7 @@ export function ProductImagePicker({
     if (granted) return true;
     setPermissionDenied(true);
     if (!canAskAgain) {
-      Alert.alert('Camera unavailable', 'Camera permission was permanently denied in settings.');
+      alert('Camera unavailable', 'Camera permission was permanently denied in settings.');
     }
     return false;
   };

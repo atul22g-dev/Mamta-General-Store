@@ -17,7 +17,7 @@ import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
 import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/client';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
-import { formatPrice } from '@/lib/format';
+import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 
 function confidencePercent(similarity: number): string {
   return `${Math.round(similarity * 100)}%`;
@@ -153,7 +153,7 @@ function MatchCard({
             <ThemedText
               type="display"
               style={[styles.priceValue, { color: theme.accent }]}>
-              {formatPrice(product.selling_price)}
+              {formatPriceWithUnit(product.selling_price, product.unit)}
             </ThemedText>
           </View>
 

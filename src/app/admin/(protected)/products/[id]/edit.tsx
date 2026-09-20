@@ -20,19 +20,22 @@ import {
 } from '@/lib/products/product-service';
 import { planImageChanges } from '@/lib/products/image-plan';
 import type { ProductFormValues } from '@/lib/products/product-validation';
+import type { Database } from '@/types/database';
 import type { PickedImage } from '@/components/products/product-image-picker';
 
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 
-/** Maps a loaded product into form values for the shared ProductForm. */
+/** Maps a loaded product into form values for the shared ProductForm.
+ *  Accepts the FULL DB enum types (a product may carry a category/unit that
+ *  was later removed from the editable config) and narrows at the call site. */
 function toFormValues(product: {
   name: string;
   description: string | null;
-  category: ProductFormValues['category'];
+  category: Database['public']['Enums']['product_category'];
   mrp: number;
   selling_price: number;
   stock: number;
-  unit: ProductFormValues['unit'];
+  unit: Database['public']['Enums']['product_unit'];
 }): ProductFormValues {
   return {
     name: product.name,

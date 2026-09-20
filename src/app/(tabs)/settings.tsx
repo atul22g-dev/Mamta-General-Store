@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
-import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 
 import { Button } from '@/components/ui/button';
 import { Icon, type IconName } from '@/components/ui/icon';
@@ -27,7 +27,9 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useDatabaseHealth } from '@/hooks/use-database-health';
 
-const APP_VERSION = Application.nativeApplicationVersion ?? '1.0.0';
+// The app's own version from app.json — NOT nativeApplicationVersion, which
+// under Expo Go reports the Go shell's version (e.g. 57.0.9) instead of ours.
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 /** Email → initial for the account avatar. */
 function initialOf(email: string | null | undefined): string {
@@ -207,8 +209,39 @@ export default function SettingsScreen() {
                 />
                 <Icon name="chevron-forward" size={14} color={theme.textTertiary} />
               </Pressable>
-              <View style={[styles.rowDivider, { borderTopColor: theme.border }]} />
-              <InfoRow icon="information-circle" label="About" value="Price lookup for shop floor" />
+            </Card>
+
+            {/* About — brand blurb with version badge */}
+            <Card style={styles.aboutCard}>
+              <View style={styles.aboutHeader}>
+                <View style={[styles.aboutLogo, { experimental_backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})`, backgroundImage: `linear-gradient(135deg, ${theme.accent}, ${theme.cta})` }]}>
+                  <ThemedText type="h3" style={{ color: theme.white }}>
+                    M
+                  </ThemedText>
+                </View>
+                <View style={styles.flexOne}>
+                  <ThemedText type="body">Mamta General Store</ThemedText>
+                  <ThemedText type="caption" themeColor="textTertiary">
+                    Point the camera at a product — get the live store price
+                    instantly. Built for the shop floor.
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={styles.aboutMetaRow}>
+                <View style={[styles.aboutBadge, { backgroundColor: theme.surfaceSecondary }]}
+                >
+                  <Icon name="phone-portrait" size={12} color={theme.textTertiary} />
+                  <ThemedText type="caption" themeColor="textTertiary">
+                    v{APP_VERSION}
+                  </ThemedText>
+                </View>
+                <View style={[styles.aboutBadge, { backgroundColor: theme.accentSoft }]}>
+                  <Icon name="sparkles" size={12} color={theme.accent} />
+                  <ThemedText type="caption" themeColor="accent">
+                    Scan to price
+                  </ThemedText>
+                </View>
+              </View>
             </Card>
           </Animated.View>
 
@@ -349,6 +382,37 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  aboutCard: {
+    gap: Spacing.three,
+  },
+  aboutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  aboutLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flexOne: {
+    flex: 1,
+  },
+  aboutMetaRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    flexWrap: 'wrap',
+  },
+  aboutBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one / 2,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: Radius.full,
   },
   sectionTitle: {
     paddingHorizontal: Spacing.one,

@@ -5,6 +5,7 @@ import { Icon, type IconName } from '@/components/ui/icon';
 import { ThemedText } from './themed-text';
 
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 export default function AppTabs() {
   return (
@@ -33,12 +34,20 @@ type TabButtonProps = {
 };
 
 function TabButton({ icon, label, isFocused, ...props }: TabButtonProps & TabTriggerSlotProps) {
+  const theme = useTheme();
+
   return (
     <Pressable {...props} style={({ pressed }) => [
       styles.tabButton,
       pressed && styles.pressed,
     ]}>
-      <Icon name={icon} size={22} color={isFocused ? undefined : 'currentColor'} />
+      {/* Explicit theme colors — 'currentColor' is a CSS-only value and does
+          not resolve on native, which left the glyphs invisible on Android. */}
+      <Icon
+        name={icon}
+        size={22}
+        color={isFocused ? theme.accent : theme.textSecondary}
+      />
       <ThemedText type="smallBold" themeColor={isFocused ? 'accent' : 'textSecondary'}>
         {label}
       </ThemedText>

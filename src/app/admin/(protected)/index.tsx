@@ -1,4 +1,4 @@
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useEffect } from 'react';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
+import { useResponsive } from '@/hooks/use-responsive';
 import { useAuth } from '@/hooks/use-auth';
 import { useAdminDashboard, stockStatus, LOW_STOCK_THRESHOLD } from '@/hooks/use-admin-dashboard';
 import { useDatabaseHealth } from '@/hooks/use-database-health';
@@ -35,6 +36,7 @@ export default function AdminDashboardScreen() {
   const { status, stats, recent, lowStockItems, errorMessage, refreshing, refresh, reload } =
     useAdminDashboard();
   const database = useDatabaseHealth();
+  const responsive = useResponsive();
 
   // While the dashboard's own data refreshes, piggyback a health recheck so
   // the indicator reflects the same moment (one extra lightweight probe).
@@ -59,10 +61,17 @@ export default function AdminDashboardScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor="#64748B" />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void refresh()}
+              tintColor={theme.textTertiary}
+              progressBackgroundColor={theme.surface}
+            />
           }>
-          {/* Header */}
-          <View style={styles.header}>
+          {/* Header — the indicator drops below the title on phones so the
+              title never gets squeezed into mid-word breaks; tablets keep
+              the space-efficient single row. */}
+          <View style={[styles.header, !responsive.isTablet && styles.headerStacked]}>
             <View style={styles.headerText}>
               <ThemedText type="h1" style={styles.title}>
                 Dashboard
@@ -91,7 +100,14 @@ export default function AdminDashboardScreen() {
                     entering={FadeInDown.duration(300).delay(index * 60)}
                     style={[
                       styles.statTile,
-                      { backgroundColor: tile.bg, borderColor: 'transparent' },
+                      {
+                        backgroundColor: tile.bg,
+                        borderColor: 'transparent',
+                        // 2-up on phones, 4-across on tablets/foldables/web —
+                        // derived live from the real window width.
+                        flexBasis: responsive.statTileBasis,
+                        minWidth: responsive.isTablet ? 0 : '47%',
+                      },
                     ]}>
                     <View style={styles.statIconRow}>
                       <Icon name={tile.icon} size={15} color={tile.fg} />
@@ -106,25 +122,83 @@ export default function AdminDashboardScreen() {
                 ))}
               </View>
 
-              {/* Quick actions */}
+              {/* Quick actions — vertical tiles (icon above label): the only
+                  layout that survives every phone width without breaking
+                  words mid-label the way tight horizontal buttons did. */}
               <View style={styles.actions}>
-                <Button
-                  title="Add Product"
-                  onPress={() => router.push('/admin/products/add')}
-                  icon={<Icon name="add" size={18} color={theme.white} />}
-                />
-                <Button
-                  title="Manage Products"
-                  onPress={() => router.push('/admin/products')}
-                  variant="secondary"
-                  iconRight={<Icon name="chevron-forward" size={16} color={theme.text} />}
-                />
-                <Button
-                  title="Add Staff"
-                  onPress={() => router.push('/admin/staff')}
-                  variant="ghost"
-                  icon={<Icon name="person-add" size={18} color={theme.accent} />}
-                />
+                {(
+                  [
+                    {
+                      title: 'Add Product',
+                      icon: 'add' as const,
+                      href: '/admin/products/add' as const,
+                      variant: 'primary' as const,
+                    },
+                    {
+                      title: 'Manage Products',
+                      icon: 'apps' as const,
+                      href: '/admin/products' as const,
+                      variant: 'secondary' as const,
+                    },
+                    {
+                      title: 'Add Staff',
+                      icon: 'person-add' as const,
+                      href: '/admin/staff' as const,
+                      variant: 'soft' as const,
+                    },
+                  ] as const
+                ).map((action) => (
+                  <Pressable
+                    key={action.title}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.title}
+                    onPress={() => router.push(action.href)}
+                    style={({ pressed }) => [
+                      styles.actionTile,
+                      action.variant === 'primary' && {
+                        backgroundColor: theme.accent,
+                        borderColor: 'transparent',
+                      },
+                      action.variant === 'secondary' && {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                      action.variant === 'soft' && {
+                        backgroundColor: theme.accentSoft,
+                        borderColor: 'transparent',
+                      },
+                      pressed && styles.actionTilePressed,
+                    ]}>
+                    <View
+                      style={[
+                        styles.actionIconWrap,
+                        action.variant === 'primary' && {
+                          backgroundColor: 'rgba(255,255,255,0.22)',
+                        },
+                        action.variant === 'secondary' && {
+                          backgroundColor: theme.accentSoft,
+                        },
+                        action.variant === 'soft' && { backgroundColor: theme.surface },
+                      ]}>
+                      <Icon
+                        name={action.icon}
+                        size={20}
+                        color={
+                          action.variant === 'primary' ? theme.white : theme.accent
+                        }
+                      />
+                    </View>
+                    <ThemedText
+                      type="caption"
+                      style={[
+                        styles.actionTileLabel,
+                        action.variant === 'primary' && { color: theme.white },
+                        action.variant === 'soft' && { color: theme.accent },
+                      ]}>
+                      {action.title}
+                    </ThemedText>
+                  </Pressable>
+                ))}
               </View>
 
               {/* Recent products */}
@@ -222,6 +296,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
+  headerStacked: {
+    flexDirection: 'column',
+    gap: Spacing.two,
+  },
   headerText: {
     flex: 1,
     gap: Spacing.one / 2,
@@ -234,7 +312,6 @@ const styles = StyleSheet.create({
   },
   statTile: {
     flexGrow: 1,
-    minWidth: '47%',
     alignItems: 'flex-start',
     gap: Spacing.one,
     padding: Spacing.three,
@@ -248,8 +325,30 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: Spacing.two,
+  },
+  actionTile: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.one,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  actionTilePressed: {
+    opacity: 0.75,
+  },
+  actionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTileLabel: {
+    textAlign: 'center',
   },
   section: {
     gap: Spacing.two,

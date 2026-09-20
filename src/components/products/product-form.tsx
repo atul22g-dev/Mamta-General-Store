@@ -214,7 +214,9 @@ export function ProductForm({
               />
             </View>
 
-            {/* Stock + unit */}
+            {/* Stock + unit — side by side; the unit selector is a compact
+                dropdown-style picker so it can never stack into a tall
+                vertical column next to the Stock field. */}
             <View style={styles.rowTwo}>
               <Input
                 label="Stock"
@@ -230,7 +232,7 @@ export function ProductForm({
                 <ThemedText type="caption" themeColor="textSecondary" style={styles.fieldLabel}>
                   Unit
                 </ThemedText>
-                <View style={styles.chipWrap}>
+                <View style={styles.unitPicker}>
                   {PRODUCT_UNITS.map((unit) => (
                     <Chip
                       key={unit}
@@ -238,6 +240,7 @@ export function ProductForm({
                       active={values.unit === unit}
                       disabled={submitting}
                       onPress={() => setField('unit', unit)}
+                      compact
                     />
                   ))}
                 </View>
@@ -279,11 +282,13 @@ function Chip({
   active,
   disabled,
   onPress,
+  compact = false,
 }: {
   label: string;
   active: boolean;
   disabled: boolean;
   onPress: () => void;
+  compact?: boolean;
 }) {
   const theme = useTheme();
 
@@ -295,6 +300,7 @@ function Chip({
       accessibilityState={{ selected: active, disabled }}
       style={({ pressed }) => [
         styles.chip,
+        compact && styles.chipCompact,
         {
           backgroundColor: active ? theme.accent : theme.surface,
           borderColor: active ? theme.accent : theme.border,
@@ -365,6 +371,11 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
+  unitPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+  },
   chip: {
     minHeight: 44,
     justifyContent: 'center',
@@ -372,6 +383,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Radius.full,
     borderWidth: 1,
+  },
+  chipCompact: {
+    minHeight: 44, // accessibility floor — never go below the 44dp touch target
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two + 2,
   },
   rowTwo: {
     flexDirection: 'row',

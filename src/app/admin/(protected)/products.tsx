@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -16,6 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductList, type ProductListStatus } from '@/hooks/use-product-list';
+import { alert } from '@/lib/alert';
 import type { ProductWithImages } from '@/lib/products/product-service';
 
 /** Vertical gap between product rows (FlatList separator). */
@@ -113,7 +114,8 @@ export default function AdminProductsScreen() {
     setPendingDelete(null);
 
     if (!outcome.ok) {
-      Alert.alert('Could not delete product', outcome.error);
+      // Cross-platform alert — Alert.alert is a silent no-op on web.
+      alert('Could not delete product', outcome.error);
     }
   };
 
@@ -123,8 +125,9 @@ export default function AdminProductsScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.flex}>
-          {/* Header */}
-          <View style={styles.header}>
+          {/* Header + search live outside the list's own padding, so they
+              carry the screen gutter here. */}
+          <View style={[styles.header, styles.screenGutter]}>
             <View style={styles.headerText}>
               <ThemedText type="h1">Products</ThemedText>
               <ThemedText type="bodySmall" themeColor="textSecondary">
@@ -141,6 +144,7 @@ export default function AdminProductsScreen() {
 
           {/* Search */}
           <Input
+            style={styles.screenGutter}
             placeholder="Search products…"
             value={search}
             onChangeText={setSearch}
@@ -236,12 +240,20 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+    paddingTop: Spacing.four,
+    gap: Spacing.three,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
+  },
+  screenGutter: {
+    paddingHorizontal: Spacing.four,
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    width: '100%',
   },
   headerText: {
     flex: 1,

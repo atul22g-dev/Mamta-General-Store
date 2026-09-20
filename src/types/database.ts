@@ -107,14 +107,10 @@ export type Database = {
     Enums: {
       user_role: 'admin' | 'staff';
       product_category:
-        | 'groceries'
-        | 'snacks'
         | 'household'
-        | 'beverages'
         | 'personal_care'
-        | 'dairy'
         | 'other';
-      product_unit: 'piece' | 'kg' | 'gram' | 'litre' | 'ml' | 'pack' | 'dozen';
+      product_unit: 'piece' | 'Meter';
     };
     CompositeTypes: Record<string, never>;
   };

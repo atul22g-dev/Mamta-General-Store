@@ -19,7 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductSearch } from '@/hooks/use-product-search';
-import { formatPrice } from '@/lib/format';
+import { formatPriceWithUnit } from '@/lib/format';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
@@ -55,7 +55,7 @@ function CatalogCard({
     <Animated.View entering={FadeInDown.duration(280).delay(Math.min(index, 8) * 45)}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${product.name}, ${formatPrice(product.selling_price)}`}
+        accessibilityLabel={`${product.name}, ${formatPriceWithUnit(product.selling_price, product.unit)}`}
         onPress={onPress}
         style={({ pressed }) => [
           styles.card,
@@ -84,7 +84,7 @@ function CatalogCard({
         </View>
 
         <ThemedText type="h3" style={{ color: theme.accent }}>
-          {formatPrice(product.selling_price)}
+          {formatPriceWithUnit(product.selling_price, product.unit)}
         </ThemedText>
       </Pressable>
     </Animated.View>

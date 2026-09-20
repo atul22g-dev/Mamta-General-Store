@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, FlatList, Image, StyleSheet, View } from 'react-native';
+import { FlatList, Image, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,7 +18,8 @@ import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductDetail } from '@/hooks/use-product-detail';
 import { deleteProduct } from '@/lib/products/product-service';
-import { formatPrice } from '@/lib/format';
+import { formatPrice, formatPriceWithUnit } from '@/lib/format';
+import { alert } from '@/lib/alert';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductImageRef, ProductWithImages } from '@/lib/products/product-service';
 
@@ -92,7 +93,7 @@ function PriceCard({ product }: { product: ProductWithImages }) {
             Selling price
           </ThemedText>
           <ThemedText type="h1" style={{ color: theme.accent }}>
-            {formatPrice(product.selling_price)}
+            {formatPriceWithUnit(product.selling_price, product.unit)}
           </ThemedText>
         </View>
         {hasDiscount && (
@@ -145,7 +146,7 @@ export default function AdminProductDetailScreen() {
     if (result.ok) {
       backToList();
     } else {
-      Alert.alert('Could not delete product', result.error);
+      alert('Could not delete product', result.error);
     }
   };
 
