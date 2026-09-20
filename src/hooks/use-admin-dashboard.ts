@@ -2,10 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { toUserMessage } from '@/lib/errors';
+import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/lib/stock';
 import type { Product } from '@/types/database';
-
-/** stock ≤ this many units counts as "low stock". */
-export const LOW_STOCK_THRESHOLD = 10;
 
 export type DashboardStats = {
   total: number;
@@ -32,10 +30,11 @@ const INITIAL_STATE: DashboardState = {
   errorMessage: null,
 };
 
-/** Stock → status mapping shared by dashboard cards. */
+/** Stock → AdminCard status mapping shared by the dashboard cards.
+ *  Buckets come from the shared stock rules: 0–1 out, 2–4 low, 5+ in. */
 export function stockStatus(stock: number): 'active' | 'pending' | 'inactive' {
-  if (stock <= 0) return 'inactive';
-  if (stock <= LOW_STOCK_THRESHOLD) return 'pending';
+  if (stock <= OUT_OF_STOCK_MAX) return 'inactive';
+  if (stock <= LOW_STOCK_MAX) return 'pending';
   return 'active';
 }
 
@@ -43,7 +42,7 @@ export function stockStatus(stock: number): 'active' | 'pending' | 'inactive' {
  * Live inventory statistics for the admin dashboard, straight from
  * Supabase (RLS-scoped to the signed-in admin). Stats are exact head
  * counts — no payload — computed as a clean partition:
- *   out of stock = 0 · low = 1..threshold · in stock = above threshold.
+ *   out of stock = 0..1 · low = 2..4 · in stock = 5+.
  */
 export function useAdminDashboard() {
   const [state, setState] = useState<DashboardState>(INITIAL_STATE);
@@ -56,15 +55,15 @@ export function useAdminDashboard() {
 
       const [totalR, inStockR, lowStockR, outStockR, recentR, lowListR] = await Promise.all([
         base(),
-        base().gt('stock', LOW_STOCK_THRESHOLD),
-        base().gt('stock', 0).lte('stock', LOW_STOCK_THRESHOLD),
-        base().eq('stock', 0),
+        base().gt('stock', LOW_STOCK_MAX),
+        base().gt('stock', OUT_OF_STOCK_MAX).lte('stock', LOW_STOCK_MAX),
+        base().lte('stock', OUT_OF_STOCK_MAX),
         supabase.from('products').select('*').order('created_at', { ascending: false }).limit(5),
         supabase
           .from('products')
           .select('*')
-          .gt('stock', 0)
-          .lte('stock', LOW_STOCK_THRESHOLD)
+          .gt('stock', OUT_OF_STOCK_MAX)
+          .lte('stock', LOW_STOCK_MAX)
           .order('stock', { ascending: true })
           .limit(5),
       ]);

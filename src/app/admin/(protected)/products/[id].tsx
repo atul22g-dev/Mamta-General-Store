@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FlatList, Image, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { FlatList, Image, Pressable, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ImageViewer } from '@/components/ui/image-viewer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
@@ -22,6 +23,7 @@ import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 import { PriceText } from '@/components/ui/price-text';
 import { alert } from '@/lib/alert';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import { stockLabel, stockTone } from '@/lib/stock';
 import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
 import type { ProductImageRef, ProductWithImages } from '@/lib/products/product-service';
 
@@ -31,32 +33,29 @@ function formatDate(iso: string): string {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function stockTone(stock: number): 'success' | 'warning' | 'error' {
-  if (stock === 0) return 'error';
-  if (stock <= 10) return 'warning';
-  return 'success';
-}
 
-/** Horizontal strip of product photos (short list per product). */
-function ThumbStrip({ images }: { images: ProductImageRef[] }) {
-  return (
-    <FlatList
-      horizontal
-      data={images}
-      keyExtractor={(image) => image.id}
-      showsHorizontalScrollIndicator={false}
-      style={styles.thumbStrip}
-      renderItem={({ item }) => (
-        <Image source={{ uri: getProductImageUrl(item.image_url) ?? undefined }} style={styles.thumbImage} />
-      )}
-    />
-  );
-}
 
-/** Gallery block: hero photo (or letter tile) plus the thumbnail strip. */
+/**
+ * Gallery block, Amazon/Flipkart style: swipeable square image carousel
+ * with a "1 / N" counter, thumbnail row, and a full-screen swipeable
+ * viewer (which opens at the image you're on). Falls back to a letter
+ * tile when the product has no photos.
+ */
 function ProductGallery({ product }: { product: ProductWithImages }) {
   const theme = useTheme();
-  const hero = product.product_images[0];
+  const { width: windowWidth } = useWindowDimensions();
+  const listRef = useRef<FlatList<ProductImageRef> | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
+
+  const images = product.product_images;
+  const hero = images[heroIndex] ?? images[0];
+  const viewerImages = images.map((image) => ({ url: getProductImageUrl(image.image_url) }));
+
+  const onMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const next = Math.round(event.nativeEvent.contentOffset.x / event.nativeEvent.layoutMeasurement.width);
+    setHeroIndex((current) => (current === next ? current : next));
+  };
 
   if (!hero) {
     return (
@@ -72,8 +71,107 @@ function ProductGallery({ product }: { product: ProductWithImages }) {
 
   return (
     <View style={[styles.gallery, Shadows.sm]}>
-      <Image source={{ uri: getProductImageUrl(hero.image_url) ?? undefined }} style={styles.heroImage} />
-      {product.product_images.length > 1 && <ThumbStrip images={product.product_images} />}
+      {/* Swipeable square carousel (Amazon-style): one image per swipe,
+          square aspect so photos never letterbox, counter top-right. */}
+      <View>
+        <FlatList
+          ref={listRef}
+          data={images}
+          horizontal
+          pagingEnabled
+          keyExtractor={(image) => image.id}
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onMomentumEnd}
+          getItemLayout={(_, i) => ({ length: windowWidth, offset: windowWidth * i, index: i })}
+          renderItem={({ item, index }) => (
+            <Pressable
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`View full image ${index + 1} of ${images.length}`}
+              accessibilityHint="Opens the image full screen"
+              onPress={() => setViewerOpen(true)}
+              style={({ pressed }: { pressed: boolean }) => [
+                styles.slide,
+                { width: windowWidth },
+                pressed && styles.pressed,
+              ]}>
+              <Image
+                source={{ uri: getProductImageUrl(item.image_url) ?? undefined }}
+                style={styles.slideImage}
+                resizeMode="cover"
+              />
+            </Pressable>
+          )}
+        />
+
+        {/* Counter chip "1 / 3" (Flipkart-style), top-right. */}
+        {images.length > 1 && (
+          <View style={[styles.counterChip, styles.pointerNone]}>
+            <ThemedText type="caption" style={styles.counterText}>
+              {heroIndex + 1} / {images.length}
+            </ThemedText>
+          </View>
+        )}
+
+        {/* Zoom affordance so users know the image opens full-screen. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View full image"
+          onPress={() => setViewerOpen(true)}
+          style={styles.expandHint}>
+          <Icon name="expand" size={14} color={theme.textSecondary} />
+        </Pressable>
+
+        {/* Dots under the image. */}
+        {images.length > 1 && (
+          <View style={[styles.dotsRow, styles.pointerNone]}>
+            {images.map((image, index) => (
+              <View
+                key={image.id}
+                style={[
+                  styles.dot,
+                  index === heroIndex && { backgroundColor: theme.accent, width: 16 },
+                ]}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+
+      {images.length > 1 && (
+        <FlatList
+          horizontal
+          data={images}
+          keyExtractor={(image) => image.id}
+          showsHorizontalScrollIndicator={false}
+          style={styles.thumbStrip}
+          renderItem={({ item, index }) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Show photo ${index + 1}`}
+              onPress={() => {
+                setHeroIndex(index);
+                listRef.current?.scrollToIndex({ index, animated: true });
+              }}
+              style={({ pressed }: { pressed: boolean }) => [pressed && styles.pressed]}>
+              <Image
+                source={{ uri: getProductImageUrl(item.image_url) ?? undefined }}
+                style={[
+                  styles.thumbImage,
+                  index === heroIndex && { borderWidth: 2, borderColor: theme.accent },
+                ]}
+              />
+            </Pressable>
+          )}
+        />
+      )}
+
+      <ImageViewer
+        visible={viewerOpen}
+        images={viewerImages}
+        initialIndex={heroIndex}
+        caption={product.name}
+        onClose={() => setViewerOpen(false)}
+      />
     </View>
   );
 }
@@ -218,7 +316,7 @@ export default function AdminProductDetailScreen() {
                   variant="accent"
                 />
                 <Badge
-                  label={product.stock === 0 ? 'Out of stock' : `${product.stock} in stock`}
+                  label={stockLabel(product.stock, { withCount: true })}
                   variant={stockTone(product.stock)}
                   dot
                 />
@@ -342,16 +440,65 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     overflow: 'hidden',
   },
-  heroImage: {
-    width: '100%',
-    aspectRatio: 16 / 10,
-    backgroundColor: 'rgba(100,116,139,0.12)',
+  slide: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  slideImage: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: 'rgba(100,116,139,0.12)',
+    objectFit: 'cover',
+  },
+  counterChip: {
+    position: 'absolute',
+    top: Spacing.two,
+    right: Spacing.two,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+  },
+  counterText: {
+    color: '#FFFFFF',
+  },
+  dotsRow: {
+    position: 'absolute',
+    bottom: Spacing.two,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  pointerNone: {
+    pointerEvents: 'none',
+  } as const,
   heroFallback: {
     width: '100%',
     aspectRatio: 16 / 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  expandHint: {
+    position: 'absolute',
+    right: Spacing.two,
+    bottom: Spacing.two,
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.85,
   },
   thumbStrip: {
     flexDirection: 'row',
@@ -364,6 +511,7 @@ const styles = StyleSheet.create({
     marginRight: Spacing.two,
     backgroundColor: 'rgba(100,116,139,0.12)',
   },
+
   identity: {
     gap: Spacing.two,
   },

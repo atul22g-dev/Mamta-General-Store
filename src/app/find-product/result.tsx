@@ -1,25 +1,26 @@
-import { useState } from 'react';
-import { Image, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { Badge } from '@/components/ui/badge';
-import { EmptyState } from '@/components/ui/empty-state';
-import { PriceText } from '@/components/ui/price-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Icon } from '@/components/ui/icon';
+import { ImageViewer } from '@/components/ui/image-viewer';
+import { PriceText } from '@/components/ui/price-text';
+import { MaxContentWidth, Radius, Shadows, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { matchSession } from '@/lib/visual-match/session';
-import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
-import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/client';
-import type { ProductWithImages } from '@/lib/products/product-service';
-import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import type { ProductWithImages } from '@/lib/products/product-service';
+import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
+import { stockLabel as sharedStockLabel, stockTone } from '@/lib/stock';
+import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/client';
+import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
+import { matchSession } from '@/lib/visual-match/session';
 
 function confidencePercent(similarity: number): string {
   return `${Math.round(similarity * 100)}%`;
@@ -36,7 +37,8 @@ type ShownProduct = {
   similarity: number | null;
 };
 
-/** Labeled stat tile (Stock / Match) used under the price hero. */
+/** Labeled stat tile (Stock / Match) used under the price hero.
+ *  Tone tints the whole tile so stock state reads at a glance. */
 function StatTile({
   label,
   value,
@@ -57,13 +59,158 @@ function StatTile({
           ? theme.error
           : theme.text;
 
+  const bg =
+    tone === 'success'
+      ? theme.successSoft
+      : tone === 'warning'
+        ? theme.warningSoft
+        : tone === 'error'
+          ? theme.errorSoft
+          : theme.surfaceSecondary;
+
   return (
-    <View style={[styles.statTile, { backgroundColor: theme.surfaceSecondary }]}>
+    <View style={[styles.statTile, { backgroundColor: bg, borderColor: color + '33' }]}>
       <ThemedText type="overline" themeColor="textTertiary">
         {label}
       </ThemedText>
       <ThemedText type="h3" style={{ color }}>
         {value}
+      </ThemedText>
+    </View>
+  );
+}
+
+/** True when the MRP is a genuine discount over the selling price. */
+function hasDiscount(product: ProductWithImages): boolean {
+  return product.mrp !== product.selling_price && product.mrp > product.selling_price;
+}
+
+/** Rounded whole-percent saving of a discounted product (0 when none). */
+function savePercent(product: ProductWithImages): number {
+  if (!hasDiscount(product) || product.mrp <= 0) return 0;
+  return Math.round(((product.mrp - product.selling_price) / product.mrp) * 100);
+}
+
+/** Tone banner above the card: the match outcome at a glance. */
+function MatchBanner({
+  icon,
+  title,
+  tone,
+  similarity,
+}: {
+  icon: 'checkmark-circle' | 'person';
+  title: string;
+  tone: 'success' | 'warning';
+  similarity: number | null;
+}) {
+  const theme = useTheme();
+  const color = tone === 'success' ? theme.success : theme.warning;
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(280)}
+      style={[styles.matchBanner, { backgroundColor: tone === 'success' ? theme.successSoft : theme.warningSoft }]}>
+      <View style={[styles.matchBannerIcon, { backgroundColor: color }]}>
+        <Icon name={icon} size={18} color={theme.white} />
+      </View>
+      <ThemedText type="body" style={{ color }}>
+        {title}
+      </ThemedText>
+      {similarity !== null && (
+        <ThemedText type="smallBold" style={{ color, marginLeft: 'auto' }}>
+          {confidencePercent(similarity)} match
+        </ThemedText>
+      )}
+    </Animated.View>
+  );
+}
+
+/**
+ * Product image area: photo (or letter-tile fallback) with the savings
+ * badge and zoom affordance overlaid. Extraction target — the media
+ * branch is independent from pricing/stats logic.
+ */
+function ProductMedia({
+  productName,
+  imageUrl,
+  hasDiscount: discounted,
+  savePercent: percentOff,
+  onOpenViewer,
+}: {
+  productName: string;
+  imageUrl: string | null;
+  hasDiscount: boolean;
+  savePercent: number;
+  onOpenViewer: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View>
+      {imageUrl ? (
+        <Pressable
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`View full image of ${productName}`}
+          onPress={onOpenViewer}>
+          <Image source={{ uri: imageUrl }} style={styles.productImage} />
+        </Pressable>
+      ) : (
+        <View style={[styles.productImage, styles.imageFallback, { backgroundColor: theme.accentSoft }]}>
+          <ThemedText type="display" style={{ color: theme.accent }}>
+            {productName.charAt(0).toUpperCase()}
+          </ThemedText>
+        </View>
+      )}
+
+      {/* Savings badge overlays the image, Flipkart-style. */}
+      {discounted && percentOff > 0 && (
+        <View style={styles.saveBadge}>
+          <ThemedText type="caption" style={styles.saveBadgeText}>
+            {percentOff}% OFF
+          </ThemedText>
+        </View>
+      )}
+
+      {/* Zoom affordance so users know the image opens full-screen. */}
+      {imageUrl && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View full image"
+          onPress={onOpenViewer}
+          style={styles.expandHint}>
+          <Icon name="expand" size={14} color={theme.textSecondary} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Flipkart-style inline price row: hero selling price, struck MRP, and
+ * the saving percent. Always the live DB value — the AI never prices.
+ */
+function PriceBlock({ product }: { product: ProductWithImages }) {
+  const theme = useTheme();
+  const discounted = hasDiscount(product);
+  const percentOff = savePercent(product);
+
+  return (
+    <View style={styles.priceSection}>
+      <View style={styles.priceBlock}>
+        <PriceText variant="hero">{formatPriceWithUnit(product.selling_price, product.unit)}</PriceText>
+        {discounted && (
+          <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrpValue}>
+            {formatPrice(product.mrp)}
+          </ThemedText>
+        )}
+        {discounted && percentOff > 0 && (
+          <ThemedText type="smallBold" style={{ color: theme.success }}>
+            {percentOff}% off
+          </ThemedText>
+        )}
+      </View>
+      <ThemedText type="caption" themeColor="textTertiary">
+        Selling price · incl. of all taxes
       </ThemedText>
     </View>
   );
@@ -88,44 +235,37 @@ function MatchCard({
 }) {
   const theme = useTheme();
   const { product, similarity } = shown;
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
-  const stockLabel =
-    product.stock === 0
-      ? 'Out of stock'
-      : product.stock <= 10
-        ? `Low · ${product.stock}`
-        : String(product.stock);
+  const stockLabel = sharedStockLabel(product.stock, { withCount: true });
+
+  const openViewer = () => setViewerOpen(true);
 
   return (
     <View style={styles.stack}>
-      <View style={styles.headerRow}>
-        <Icon
-          name={headerIcon}
-          size={22}
-          color={headerTone === 'success' ? theme.success : theme.warning}
-        />
-        <ThemedText type="h3">{headerTitle}</ThemedText>
-        {similarity !== null && (
-          <Badge label={`${confidencePercent(similarity)} match`} variant={headerTone} size="sm" />
-        )}
-      </View>
+      <MatchBanner
+        icon={headerIcon}
+        title={headerTitle}
+        tone={headerTone}
+        similarity={similarity}
+      />
 
-      <View
+      {/* Product card — e-commerce product-page layout. */}
+      <Animated.View
+        entering={FadeInDown.duration(300).delay(70)}
         style={[
           styles.card,
           { backgroundColor: theme.surface, borderColor: theme.border },
           Shadows.sm,
         ]}>
-        {firstImage ? (
-          <Image source={{ uri: firstImage }} style={styles.productImage} />
-        ) : (
-          <View style={[styles.productImage, styles.imageFallback, { backgroundColor: theme.accentSoft }]}>
-            <ThemedText type="display" style={{ color: theme.accent }}>
-              {product.name.charAt(0).toUpperCase()}
-            </ThemedText>
-          </View>
-        )}
+        <ProductMedia
+          productName={product.name}
+          imageUrl={firstImage}
+          hasDiscount={hasDiscount(product)}
+          savePercent={savePercent(product)}
+          onOpenViewer={openViewer}
+        />
 
         <View style={styles.cardBody}>
           {/* Name + unit */}
@@ -134,28 +274,7 @@ function MatchCard({
             {unitLabel(product.unit)}
           </ThemedText>
 
-          {/* Price hero — selling price is the most prominent element.
-              Always the live DB value; the AI never supplies prices. */}
-          <View style={[styles.priceHero, { backgroundColor: theme.accentSoft }]}>
-            <View style={styles.priceHeroTop}>
-              {product.mrp !== product.selling_price && (
-                <View style={styles.mrpBlock}>
-                  <ThemedText type="overline" themeColor="textTertiary">
-                    MRP
-                  </ThemedText>
-                  <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrpValue}>
-                    {formatPrice(product.mrp)}
-                  </ThemedText>
-                </View>
-              )}
-            </View>
-            <ThemedText type="overline" style={{ color: theme.accentDark }}>
-              Selling price
-            </ThemedText>
-            <PriceText variant="hero" style={styles.priceValue}>
-              {formatPriceWithUnit(product.selling_price, product.unit)}
-            </PriceText>
-          </View>
+          <PriceBlock product={product} />
 
           {/* Stock + Match stats (Match hidden for manual picks) */}
           <View style={styles.statRow}>
@@ -163,7 +282,7 @@ function MatchCard({
               <StatTile
                 label="Stock"
                 value={stockLabel}
-                tone={product.stock === 0 ? 'error' : product.stock <= 10 ? 'warning' : undefined}
+                tone={stockTone(product.stock) === 'success' ? undefined : stockTone(product.stock)}
               />
             </View>
             {similarity !== null && (
@@ -173,7 +292,14 @@ function MatchCard({
             )}
           </View>
         </View>
-      </View>
+      </Animated.View>
+
+      <ImageViewer
+        visible={viewerOpen}
+        images={[{ url: firstImage }]}
+        caption={product.name}
+        onClose={() => setViewerOpen(false)}
+      />
     </View>
   );
 }
@@ -216,11 +342,21 @@ function CandidateRow({
         <ThemedText type="smallBold" numberOfLines={1}>
           {candidate.product.name}
         </ThemedText>
-        <Badge
-          label={`${confidencePercent(candidate.similarity)} similar`}
-          variant={candidate.similarity >= 0.75 ? 'warning' : 'neutral'}
-          size="sm"
-        />
+        {/* Similarity bar — length reads faster than a % label alone. */}
+        <View style={[styles.similarityTrack, { backgroundColor: theme.surfaceSecondary }]}>
+          <View
+            style={[
+              styles.similarityFill,
+              {
+                width: `${Math.round(candidate.similarity * 100)}%`,
+                backgroundColor: candidate.similarity >= 0.75 ? theme.warning : theme.accent,
+              },
+            ]}
+          />
+        </View>
+        <ThemedText type="caption" themeColor="textTertiary">
+          {confidencePercent(candidate.similarity)} similar
+        </ThemedText>
       </View>
 
       <Button
@@ -504,35 +640,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  expandHint: {
+    position: 'absolute',
+    right: Spacing.two,
+    bottom: Spacing.two,
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   productImage: {
     width: '100%',
-    aspectRatio: 16 / 10,
+    aspectRatio: 1,
     backgroundColor: 'rgba(100,116,139,0.12)',
+    objectFit: 'cover',
   },
   imageFallback: {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  saveBadge: {
+    position: 'absolute',
+    top: Spacing.three,
+    left: Spacing.three,
+    borderRadius: Radius.sm,
+    backgroundColor: 'rgba(2,6,23,0.72)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 3,
+  },
+  saveBadgeText: {
+    color: '#FFFFFF', // always-on dark scrim — theme-independent by design
+    letterSpacing: 0.4,
+  },
   cardBody: {
     padding: Spacing.four,
     gap: Spacing.one,
   },
-  priceHero: {
-    marginTop: Spacing.two,
-    borderRadius: Radius.md,
-    padding: Spacing.four,
+  priceSection: {
     gap: Spacing.one,
-    alignItems: 'flex-start',
   },
-  priceHeroTop: {
-    alignSelf: 'stretch',
+  priceBlock: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    minHeight: 0,
-  },
-  mrpBlock: {
-    alignItems: 'flex-end',
-    gap: 2,
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
   },
   mrpValue: {
     textDecorationLine: 'line-through',
@@ -553,6 +707,7 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.one,
     alignItems: 'flex-start',
+    borderWidth: 1,
   },
   chooseAnother: {
     marginTop: Spacing.two,
@@ -585,7 +740,31 @@ const styles = StyleSheet.create({
   },
   candidateInfo: {
     flex: 1,
-    gap: Spacing.one,
+    gap: Spacing.half,
+  },
+  similarityTrack: {
+    height: 6,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+  },
+  similarityFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  matchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  matchBannerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   candidateThumb: {
     width: 44,

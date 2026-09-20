@@ -18,7 +18,8 @@ import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useAuth } from '@/hooks/use-auth';
-import { useAdminDashboard, stockStatus, LOW_STOCK_THRESHOLD } from '@/hooks/use-admin-dashboard';
+import { useAdminDashboard, stockStatus } from '@/hooks/use-admin-dashboard';
+import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/lib/stock';
 import { useDatabaseHealth } from '@/hooks/use-database-health';
 
 type StatTile = {
@@ -241,12 +242,12 @@ export default function AdminDashboardScreen() {
               <View style={styles.section}>
                 <SectionHeader
                   title="Low Stock"
-                  subtitle={`${stats.lowStock} product(s) at or below ${LOW_STOCK_THRESHOLD} units`}
+                  subtitle={`${stats.lowStock} product(s) between ${OUT_OF_STOCK_MAX + 1} and ${LOW_STOCK_MAX} units`}
                 />
                 {lowStockItems.length === 0 ? (
                   <EmptyState
                     title="Stock levels healthy"
-                    description={`Nothing at or below ${LOW_STOCK_THRESHOLD} units right now.`}
+                    description={`Nothing in the 2–${LOW_STOCK_MAX} unit range right now.`}
                   />
                 ) : (
                   <View style={styles.list}>

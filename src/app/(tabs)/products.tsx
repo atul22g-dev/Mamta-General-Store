@@ -310,8 +310,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   cardThumb: {
-    width: 52,
-    height: 52,
+    width: 72,
+    height: 72,
     borderRadius: Radius.md,
     backgroundColor: 'rgba(100,116,139,0.12)',
   },

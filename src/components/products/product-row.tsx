@@ -10,6 +10,7 @@ import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 import { PriceText } from '@/components/ui/price-text';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import { stockLabel, stockTone } from '@/lib/stock';
 
 const THUMB = 56;
 
@@ -25,12 +26,7 @@ type ProductRowProps = {
 
 
 
-/** Stock label + tone shared by the row. */
-function stockStatus(stock: number): { label: string; tone: 'success' | 'warning' | 'error' } {
-  if (stock === 0) return { label: 'Out of stock', tone: 'error' };
-  if (stock <= 10) return { label: `Low · ${stock}`, tone: 'warning' };
-  return { label: `In stock · ${stock}`, tone: 'success' };
-}
+
 
 /**
  * Catalog row for the admin list: image thumbnail (or letter tile),
@@ -49,7 +45,7 @@ export function ProductRow({
 
   const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const initial = product.name.charAt(0).toUpperCase() || '?';
-  const stock = stockStatus(product.stock);
+  const stock = { label: stockLabel(product.stock, { withCount: true }), tone: stockTone(product.stock) };
 
   return (
     <Animated.View entering={FadeInDown.duration(300).delay(Math.min(index, 8) * 50)} style={style}>
