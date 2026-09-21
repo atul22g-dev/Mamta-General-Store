@@ -11,8 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { scanSession } from '@/lib/scan-session';
-import { matchSession } from '@/lib/visual-match/session';
+import { scanSession, matchSession } from '@/lib/scan-session';
 import { matchProductFromPhoto } from '@/lib/visual-match/client';
 import { validateAndConvert } from '@/lib/image-pipeline';
 

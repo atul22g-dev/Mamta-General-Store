@@ -32,7 +32,7 @@ import type { ProductWithImages } from '@/lib/products/product-service';
 import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
 import type { MatchCandidateView } from '@/lib/visual-match/client';
 import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
-import { matchSession } from '@/lib/visual-match/session';
+import { matchSession } from '@/lib/scan-session';
 import { MAX_SIMILAR_PRODUCTS } from '@/lib/visual-match/thresholds';
 
 // ---------------------------------------------------------------------------

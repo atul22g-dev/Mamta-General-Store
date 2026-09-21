@@ -11,8 +11,8 @@ followed by re-running `npx tsc --noEmit`, `npm run lint`, and all four node tes
 |---|---|---|---|
 | `src/components/products/product-card.tsx` | zero imports of the file; zero usages of the `ProductCard` symbol anywhere in `src/` or `tests/` (grep hits were the unrelated `SimilarProductCard` in `find-product/result.tsx`); superseded by `product-row.tsx` (used by admin products list) and inline cards | **SAFE_TO_DELETE** | **DELETED** — re-verified: no references remain, tsc 0 errors, lint clean, 83/83 tests pass |
 | `src/types/css.d.ts` | `src/constants/theme.ts` imports `@/global.css`; without this ambient module declaration `tsc` fails | **KEEP** | kept |
-| `supabase/sync-product-options.sql` | no code references; but it is a Dashboard-paste SQL tool, self-marked DEPRECATED with an explicit "do not run on production" warning, and referenced by `docs/BUG-AUDIT.md` / `SECURITY_AUDIT.md` as historical record | **UNCERTAIN** | kept (deletion is the owner's call; it is documentation-grade history, not runtime code) |
-| `supabase/fix-product-images.sql` | no code references; standalone idempotent repair script for a real, documented RLS failure mode (referenced in `docs/BUG-AUDIT.md`, `FINAL_BUG_REPORT.md`, `SECURITY_AUDIT.md`) | **KEEP** (repair tooling) | kept |
+| `supabase/sync-product-options.sql` | no code references; but it is a Dashboard-paste SQL tool, self-marked DEPRECATED with an explicit "do not run on production" warning, and referenced by `docs/BUG-AUDIT.md` / `SECURITY_AUDIT.md` as historical record | **UNCERTAIN** | ~~kept~~ **removed (pass 3, 2026-09-22)**: self-declared destructive; the migration chain is the single source of truth |
+| `supabase/fix-product-images.sql` | no code references; standalone idempotent repair script for a real, documented RLS failure mode (referenced in `docs/BUG-AUDIT.md`, `FINAL_BUG_REPORT.md`, `SECURITY_AUDIT.md`) | ~~KEEP~~ **removed (pass 3, 2026-09-22)**: its policies use the removed `mimetype`/`size` columns and FAIL on modern Supabase (the same bug fixed in migration 0007); migration 0007 now carries the corrected policies | removed |
 | `scripts/export-mobileclip-onnx.mjs` | only path to produce the MobileCLIP ONNX artifact for the opt-in provider; needs dev deps not currently installed | **KEEP** (required if the free local-model path is ever enabled) | kept |
 | `supabase/setup-all-in-one.sql` | referenced by README (setup + troubleshooting), deploy script failure hints | **KEEP** | kept |
 | All `src/app/**` files | Expo Router file-based routes — route files must never be deleted; every screen is reachable (`find-product/*` stack verified in `_layout.tsx`) | **KEEP** | kept |
@@ -66,7 +66,7 @@ npm-script/doc reference re-verified with the same reference-analysis method.
 | `.claude/settings.json` (tracked) | tool-personal config; zero references anywhere in the repo | DELETED |
 | `.expo-fulltest/`, `.freebuff/`, `.vscode/`, `.github/`, `assets/*`, `expo-env.d.ts` | tool/CI/IDE/build artifacts; assets referenced by app.json | KEEP |
 | `src/hooks/use-responsive.ts`, `src/constants/motion.ts`, `src/components/animated-icon(.web).tsx` + `.module.css`, `src/types/css.d.ts`, `src/config/products.ts` | re-checked with import-graph sweep — ALL referenced (home/admin screens, splash overlay, `@/global.css` typing, form config) | KEEP |
-| `supabase/sync-product-options.sql`, `supabase/fix-product-images.sql` | still UNCERTAIN per pass 1 (deprecated-but-documented Dashboard tools) | KEEP |
+| `supabase/sync-product-options.sql`, `supabase/fix-product-images.sql` | pass 3: both removed (deprecated-destructive / broken-on-modern-Schema; migration chain covers both) | removed |
 
 ## Config drift fixed (optimization)
 

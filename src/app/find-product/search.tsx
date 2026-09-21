@@ -14,7 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductSearch } from '@/hooks/use-product-search';
-import { matchSession } from '@/lib/visual-match/session';
+import { matchSession } from '@/lib/scan-session';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
