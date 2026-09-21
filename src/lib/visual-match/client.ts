@@ -244,9 +244,3 @@ export async function matchProductFromPhoto(
     timeout.cancel();
   }
 }
-
-/**
- * Pure decision logic lives in ./decision (dependency-free, unit-testable);
- * re-exported here for a single import surface.
- */
-export { analyzeMatchOutcome } from '@/lib/visual-match/decision';

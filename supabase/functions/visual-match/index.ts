@@ -1,9 +1,10 @@
 /**
- * visual-match edge function — FREE visual product matching algorithm.
+ * visual-match edge function — visual product matching.
  *
  * Flow (the AI NEVER touches prices):
  *   user photo (base64 data URI)
- *     → MobileCLIP-S0 embedding (free, ONNX, 512-dim float32)
+ *     → embedding via the configured provider (see _shared/embedding.ts:
+ *       Cohere embed-v4.0 by default; MobileCLIP-S0 ONNX when opted in)
  *     → validate embedding dimensions + finite values
  *     → pgvector cosine similarity over product_images.embedding
  *     → group results by product (best score per product)
@@ -14,7 +15,11 @@
  *
  * No price field exists anywhere in this function's response by design.
  *
- * Configurable thresholds (set via supabase secrets):
+ * AuthZ: publishable-key callers (anonymous shop-floor scans) and valid
+ * session JWTs are both accepted — see the gate in the request handler.
+ *
+ * Configurable (set via supabase secrets):
+ *   - EMBEDDING_PROVIDER ('cohere' default | 'mobileclip-s0')
  *   - MAIN_MATCH_THRESHOLD (default: 0.90)
  *   - SIMILAR_PRODUCT_THRESHOLD (default: 0.75)
  *   - AMBIGUOUS_MARGIN (default: 0.03)
@@ -229,24 +234,55 @@ Deno.serve(async (req: Request) => {
   const startTime = Date.now();
 
   try {
-    // --- AuthZ: caller must have a valid Supabase session (anon or authenticated) ---
-    // This prevents unauthenticated abuse while still allowing shop-floor scans.
+    // --- AuthZ: caller must present the project's publishable key or a valid session JWT ---
+    //
+    // supabase-js v2+ does NOT send the key as the Authorization header for
+    // functions.invoke when using new-format `sb_publishable_…` keys and the
+    // user has no session — the key then travels ONLY in the `apikey`
+    // header. Gating strictly on `Authorization` therefore 401s every
+    // anonymous shop-floor scan (the documented primary flow). Accept both:
+    //   • Authorization: Bearer <publishable key>  → anonymous scan
+    //   • apikey: <publishable key>                → anonymous scan
+    //   • Authorization: Bearer <session JWT>      → validated via auth.getUser
+    // The publishable key is public by design (it ships in the app bundle);
+    // accepting it is key-gateway authentication, not a privilege grant —
+    // the RPC below runs read-only over the public catalog either way.
+    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    const bearer = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length).trim()
+      : null;
+    const apiKeyHeader = req.headers.get('apikey')?.trim() || null;
+    const presentedKey = bearer ?? apiKeyHeader;
+
+    if (!presentedKey) {
       return json({ error: 'Authentication required.' }, 401);
+    }
+
+    let resolvedAuthHeader: string;
+    if (ANON_KEY && presentedKey === ANON_KEY) {
+      // Anonymous shop-floor scan (publishable key only).
+      resolvedAuthHeader = `Bearer ${ANON_KEY}`;
+    } else {
+      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+      const authClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        ANON_KEY,
+        { global: { headers: { Authorization: `Bearer ${presentedKey}` } } },
+      );
+      const { error: authError } = await authClient.auth.getUser(presentedKey);
+      if (authError) {
+        return json({ error: 'Invalid or expired session.' }, 401);
+      }
+      resolvedAuthHeader = `Bearer ${presentedKey}`;
     }
 
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
+      ANON_KEY,
+      { global: { headers: { Authorization: resolvedAuthHeader } } },
     );
-
-    const { error: authError } = await supabase.auth.getUser();
-    if (authError) {
-      return json({ error: 'Invalid or expired session.' }, 401);
-    }
 
     const { image } = (await req.json()) as MatchRequest;
 
@@ -260,9 +296,29 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[visual-match] Processing image (${(image.length / 1024).toFixed(0)} KB data URI)`);
 
-    // 1. Embed the user photo using MobileCLIP-S0 (FREE, no API keys)
-    const provider = getEmbeddingProvider();
-    const { vectors, model, dimensions } = await provider.embedImages([image]);
+    // 1. Embed the user photo with the configured provider (default: Cohere).
+    // Provider configuration/transport failures are surfaced to the caller
+    // (never flattened into a generic 500): without the REAL reason the
+    // feature is undebuggable — a 500 "Visual matching failed" masked the
+    // missing COHERE_API_KEY in production for this exact reason.
+    let provider;
+    try {
+      provider = getEmbeddingProvider();
+    } catch (configError) {
+      const message = configError instanceof Error ? configError.message : 'Embedding provider is not configured.';
+      console.error(`[visual-match] Provider config error: ${message}`);
+      return json({ error: message }, 500);
+    }
+
+    let embedResult;
+    try {
+      embedResult = await provider.embedImages([image]);
+    } catch (embedError) {
+      const message = embedError instanceof Error ? embedError.message : 'Embedding provider request failed.';
+      console.error(`[visual-match] Embedding provider error: ${message}`);
+      return json({ error: `Embedding failed: ${message}` }, 502);
+    }
+    const { vectors, model, dimensions } = embedResult;
 
     // Validate the embedding result before using it
     if (!vectors || !Array.isArray(vectors) || vectors.length === 0) {

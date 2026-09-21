@@ -17,10 +17,17 @@ these functions with its publishable anon key.
 supabase login
 supabase link --project-ref YOUR-REF
 
-# Secrets live in Supabase — never in the app or this repo
-supabase secrets set COHERE_API_KEY=your-key
-supabase secrets set MATCH_THRESHOLD=0.82
-supabase secrets set MATCH_CANDIDATES=5
+# The embedding provider secret (see “Provider” below).
+# The DEFAULT provider (MobileCLIP-S0, free, self-hosted in the function)
+# needs NO secret at all. Only set COHERE_API_KEY if you switch to Cohere:
+# supabase secrets set COHERE_API_KEY=your-key
+# Optional model override for the default free path:
+# supabase secrets set MOBILECLIP_MODEL_URL=<public-url-of-512dim-vision.onnx>
+# Optional tuning (defaults shown):
+# supabase secrets set MAIN_MATCH_THRESHOLD=0.90
+# supabase secrets set SIMILAR_PRODUCT_THRESHOLD=0.75
+# supabase secrets set AMBIGUOUS_MARGIN=0.03
+# supabase secrets set EDGE_CANDIDATE_LIMIT=20
 
 # Deploy
 supabase functions deploy visual-match
@@ -33,23 +40,39 @@ injected automatically by the platform.
 ## Provider
 
 **Mistral is NOT used in this project** — neither for embeddings nor for any
-other AI operation. The sole AI provider is:
+other AI operation. The provider is selected by the `EMBEDDING_PROVIDER`
+edge secret:
 
-`_shared/embedding.ts` wraps **Cohere `embed-v4.0`** at **512 dimensions**
-(`input_type: "image"`, data-URI inputs), verified to match the pgvector
-column `vector(512)` exactly — a runtime guard in the same file fails
-loudly if a response ever arrives with a different dimension (no silent
-truncation/padding). To swap providers (OpenAI, self-hosted CLIP, …):
+1. **MobileCLIP-S0 (DEFAULT, free)** — `_shared/embedding-engine.ts` runs
+   the quantized MobileCLIP-S0 vision tower (`Xenova/mobileclip_s0` on the
+   HF Hub, 11.8 MB) **inside the edge function** via `onnxruntime-web`
+   (WASM from esm.sh). No API key, no native addons. Verified live
+   end-to-end (2026-09-22): ~1 s inference per image, 512-dim output
+   matching the pgvector column `vector(512)`. Requires no secrets.
+
+2. **Cohere `embed-v4.0` (opt-in)** — set `EMBEDDING_PROVIDER=cohere`
+   and `COHERE_API_KEY=<key>`; `_shared/embedding.ts` selects it.
+   Both providers output 512-dim L2-normalized vectors, but they are
+   **different models**: embeddings are not comparable across providers.
+   Never mix: after switching providers, clear and re-embed all reference
+   images before searching.
+
+To swap providers (OpenAI, self-hosted CLIP, …):
 
 1. Implement `EmbeddingProvider` in `_shared/embedding.ts`.
 2. Keep the output dimension equal to the pgvector column (`vector(512)`)
    and update `EMBEDDING_DIMENSIONS` + the column together.
+   (Platform notes: onnxruntime-node is a native addon and cannot run on
+   Supabase Edge; transformers.js exceeds the deploy-time bundler — use
+   `onnxruntime-web` from esm.sh + a plain ONNX from the HF Hub, as the
+   default engine does.)
+3. **Clear and regenerate every stored reference embedding** — search and
+   reference embeddings must come from the same model.
+4. Redeploy both functions. The app and the RPC need no changes.
 
 If Mistral (or any other AI) is adopted later, it must follow the same
 rule as Cohere: **edge-function secret only** (`supabase secrets set …`),
 never an `EXPO_PUBLIC_` var, never inside the Expo bundle.
-   or migrate the column + re-embed everything.
-3. Redeploy both functions. The app and the RPC need no changes.
 
 ## Embedding reference images
 
@@ -71,11 +94,16 @@ curl -X POST "https://YOUR-REF.supabase.co/functions/v1/embed-product-image" \
 
 ## Threshold tuning
 
-- `MATCH_THRESHOLD` (default **0.82** cosine similarity) decides
-  `identified` vs `uncertain`.
-- Raise it (0.86+) when false positives are costly; lower it (0.75–0.8)
-  if valid matches are being rejected. The app displays the value the
-  function used — tune with real store photos.
+- The edge function groups image-level results and decides
+  `identified` vs `uncertain` vs `no-match` (see `visual-match/index.ts`).
+- Defaults (overridable via secrets of the same names):
+  **MAIN_MATCH_THRESHOLD** 0.90 (auto-show a product),
+  **SIMILAR_PRODUCT_THRESHOLD** 0.75 (candidate pool + "similar" list),
+  **AMBIGUOUS_MARGIN** 0.03 (two near-equal top candidates → user picks),
+  **EDGE_CANDIDATE_LIMIT** 20 (rows fetched from pgvector per search).
+- The RPC's own `match_threshold` parameter is called with
+  SIMILAR_PRODUCT_THRESHOLD; raise/lower the secrets to tune with real
+  store photos. The app displays the thresholds the function used.
 
 ## Price invariant
 

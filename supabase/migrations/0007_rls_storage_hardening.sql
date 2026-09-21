@@ -30,6 +30,11 @@
 -- -----------------------------------------------------------------------------
 -- 1. Storage INSERT: staff/admin only, images only, size-capped
 -- -----------------------------------------------------------------------------
+-- Storage-schema note: current Supabase storage-api versions (hosted and
+-- local docker alike) moved `mimetype` / `size` into the `metadata` jsonb
+-- column of storage.objects; the old top-level columns no longer exist.
+-- Policies therefore read metadata->>'mimetype' and (metadata->>'size').
+-- -----------------------------------------------------------------------------
 drop policy if exists "staff can upload product images" on storage.objects;
 drop policy if exists "staff and admins can upload product images" on storage.objects;
 
@@ -43,9 +48,9 @@ create policy "staff and admins can upload product images"
     and public.current_role() in ('admin', 'staff')
     -- Content gate: catalog images are images. Blocks text/html (stored-XSS
     -- hosting) and other non-image payloads in the public bucket.
-    and mimetype like 'image/%'
+    and metadata->>'mimetype' like 'image/%'
     -- Size gate: 5 MiB covers the app's JPEG captures with headroom.
-    and size <= 5 * 1024 * 1024
+    and (metadata->>'size')::bigint <= 5 * 1024 * 1024
     -- Path gate (unchanged from 0004): the object must live in a folder
     -- named for an EXISTING product id. Qualify storage.objects.name so
     -- the subquery binds the object key, not products.name (display name).
@@ -71,8 +76,8 @@ create policy "admins can update product images"
   with check (
     bucket_id = 'product-images'
     and public.is_admin()
-    and mimetype like 'image/%'
-    and size <= 5 * 1024 * 1024
+    and metadata->>'mimetype' like 'image/%'
+    and (metadata->>'size')::bigint <= 5 * 1024 * 1024
   );
 
 -- -----------------------------------------------------------------------------

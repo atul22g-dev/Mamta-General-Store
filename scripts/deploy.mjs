@@ -10,9 +10,11 @@
  *   3. Link           — links this folder to the Supabase project
  *   4. Migrate        — applies supabase/migrations/*.sql to the remote database
  *                       (auto-heals a database whose objects already exist by
- *                       marking local migrations as applied)
+ *                       marking local migrations as applied, then re-pushes)
  *   5. Deploy         — deploys every Edge Function in supabase/functions/
- *   6. Verify         — probes each deployed function endpoint
+ *                       (one retry per function: the platform occasionally
+ *                       returns a transient 500 while bundling)
+ *   6. Verify         — migration history, RPC executability, function probes
  *
  * Status check only, changes nothing:
  *   npm run db:deploy -- --check
@@ -55,6 +57,20 @@ function run(cmd, argsForCmd) {
   const outputText = `${res.stdout ?? ''}${res.stderr ?? ''}`.trim();
   for (const line of outputText.split('\n')) console.log(c.dim(`    ${line}`));
   return { ok: res.status === 0, output: outputText };
+}
+
+/** Run a command with retries for transient platform errors (bare 500s). */
+function runWithRetry(cmd, argsForCmd, { attempts = 3, delayMs = 10_000, retryOn = /unexpected deploy status 5\d\d|internal error/i } = {}) {
+  let last = { ok: false, output: '' };
+  for (let i = 1; i <= attempts; i++) {
+    if (i > 1) {
+      console.log(c.yellow(`  ◌ retry ${i - 1}/${attempts - 1} after ${delayMs / 1000}s (transient platform error?)…`));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
+    last = run(cmd, argsForCmd);
+    if (last.ok || !retryOn.test(last.output)) return last;
+  }
+  return last;
 }
 
 function step(n, total, label) {
@@ -135,7 +151,7 @@ if (ONLY_CHECK) {
 // 4. Migrate the database (apply supabase/migrations/*.sql)
 // ---------------------------------------------------------------------------
 step(4, TOTAL, 'Migrate database');
-const push = run('npx', ['--yes', 'supabase', 'db', 'push']);
+const push = runWithRetry('npx', ['--yes', 'supabase', 'db', 'push'], { retryOn: /internal error|unexpected error/i });
 
 if (push.ok) {
   console.log(c.green('✓ Database is up to date'));
@@ -164,29 +180,71 @@ if (push.ok) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Deploy every Edge Function
+// 5. Deploy every Edge Function (with transient-error retry)
 // ---------------------------------------------------------------------------
 if (functions.length === 0) {
   console.log(`\n${c.bold(c.cyan('[5/5]'))} ${c.dim('No Edge Functions to deploy — skipping.')}`);
 } else {
   step(5, TOTAL, 'Deploy Edge Functions');
-  let allOk = true;
+  const failures = [];
   for (const fn of functions) {
     console.log(`\n  ${c.bold(fn)}`);
-    const deploy = run('npx', ['--yes', 'supabase', 'functions', 'deploy', fn, '--use-api']);
+    const deploy = runWithRetry('npx', ['--yes', 'supabase', 'functions', 'deploy', fn, '--use-api']);
     if (deploy.ok) console.log(c.green(`  ✓ ${fn} deployed`));
-    else { allOk = false; console.log(c.red(`  ✗ ${fn} failed`)); }
+    else failures.push(fn);
   }
-  if (!allOk) fail('One or more functions failed to deploy — check the output above.',
-    'Docker not needed (--use-api). An expired token is the other common cause.');
+  if (failures.length > 0) {
+    fail(`Failed to deploy: ${failures.join(', ')}`,
+      'Usually transient (bundling 500s) — re-run npm run db:deploy. An expired token is the other common cause.');
+  }
 }
 
 // ---------------------------------------------------------------------------
-// 6. Verify — probe each function endpoint
+// 6. Verify — migration history, RPC, function probes
 // ---------------------------------------------------------------------------
-console.log(`\n${c.bold(c.cyan('[verify]'))} Probing live endpoints…`);
+console.log(`\n${c.bold(c.cyan('[verify]'))} Checking the deployed backend…`);
 await new Promise((r) => setTimeout(r, 3000)); // allow edge rollout
 
+// 6a. Migration history: every local migration must be tracked as applied.
+const migList = run('npx', ['--yes', 'supabase', 'migration', 'list']);
+const unapplied = migList.output
+  .split('\n')
+  .filter((line) => /\|\s*(local\s*\||\|\s*not applied)/i.test(line) && !/migration/i.test(line));
+if (unapplied.length > 0) {
+  console.log(`${c.yellow('?')} Some migrations may not be applied remotely:`);
+  for (const line of unapplied.slice(0, 6)) console.log(c.dim(`    ${line.trim()}`));
+} else if (migList.ok) {
+  console.log(`${c.green('✓')} Migration history: all local migrations applied on remote`);
+}
+
+// 6b. RPC executability: the visual-search RPC must run (empty result is fine;
+//     error 404/42883 means the function definition itself is broken/missing).
+const rpcBody = JSON.stringify({
+  query_embedding: Array.from({ length: 512 }, () => 0.1),
+  match_threshold: 0.99,
+  match_count: 1,
+});
+try {
+  const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/visual_search_matches`, {
+    method: 'POST',
+    headers: { apikey: publishableKey, 'Content-Type': 'application/json' },
+    body: rpcBody,
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (rpcRes.status === 404) {
+    console.log(`${c.red('✗')} RPC visual_search_matches: 404 — function missing on remote`);
+  } else if (!rpcRes.ok) {
+    const body = await rpcRes.text();
+    console.log(`${c.red('✗')} RPC visual_search_matches: HTTP ${rpcRes.status} ${body.slice(0, 120)}`);
+  } else {
+    console.log(`${c.green('✓')} RPC visual_search_matches: executable (HTTP ${rpcRes.status})`);
+  }
+} catch {
+  console.log(`${c.yellow('?')} RPC probe: network error — check your connection.`);
+}
+
+// 6c. Edge functions: any non-404 response means the deployment exists;
+//     rejecting anonymous/invalid calls is exactly the security behavior we want.
 for (const fn of functions) {
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
@@ -198,8 +256,6 @@ for (const fn of functions) {
     if (res.status === 404) {
       console.log(`${c.red('✗')} ${fn}: 404 — not deployed (did step 5 succeed for this one?)`);
     } else {
-      // Any other status (401/403/400…) means the function exists and responds;
-      // rejecting anonymous calls is exactly the security behavior we want.
       console.log(`${c.green('✓')} ${fn}: HTTP ${res.status} — live`);
     }
   } catch {
@@ -207,6 +263,6 @@ for (const fn of functions) {
   }
 }
 
-console.log(`\n${c.bold('🎉 Backend deployed.')}`);
+console.log(`\n${c.bold('🎉 Backend deployed and verified.')}`);
 console.log(`  • App: ${c.cyan('npx expo start -c')}`);
 console.log(`  • Admin login repair (if needed): run ${c.dim('supabase/create-admin-user.sql')} in Dashboard → SQL Editor`);

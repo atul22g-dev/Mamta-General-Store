@@ -28,7 +28,7 @@ import {
   type ProductCategory,
   type ProductUnit,
 } from '@/lib/products/product-validation';
-import { matchSession } from '@/lib/visual-match/session';
+import { matchSession } from '@/lib/scan-session';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
