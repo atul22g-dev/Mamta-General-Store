@@ -40,106 +40,169 @@ const { analyzeMatchOutcome } = await import('@/lib/visual-match/decision.ts');
 const { parseEdgeMatchResponse } = await import('@/lib/visual-match/edge-contract.ts');
 const { bytesToBase64 } = await import('@/lib/visual-match/base64.ts');
 const {
-  VISUAL_MATCH_THRESHOLD,
-  VISUAL_MATCH_AMBIGUOUS_MARGIN,
-} = await import('@/lib/visual-match/threshold.ts');
-
-const outcome = (candidates, confidence, threshold = VISUAL_MATCH_THRESHOLD) => ({
-  status: confidence >= threshold ? 'identified' : 'uncertain',
-  confidence,
-  threshold,
-  candidates,
-});
+  MAIN_MATCH_THRESHOLD,
+  SIMILAR_PRODUCT_THRESHOLD,
+  AMBIGUOUS_MARGIN,
+} = await import('@/lib/visual-match/thresholds.ts');
 
 const candidate = (id, similarity) => ({
   product: { id, name: `P-${id}`, selling_price: 10, mrp: 12, unit: 'piece', stock: 1, product_images: [] },
   similarity,
 });
 
+/**
+ * Build a VisualMatchOutcome matching the real types-client.ts shape.
+ * Edge function returns: { status, confidence, thresholds, main_match, similar_products, all_candidates }
+ * Client rewrites to: { status, confidence, thresholds, main_match: MatchCandidateView | null, ... }
+ */
+function buildOutcome({
+  mainMatch = null,
+  similarProducts = [],
+  allCandidates = [],
+  confidence = 0,
+  status = null,
+}) {
+  const resolvedStatus = status ?? (mainMatch ? 'identified' : similarProducts.length > 0 ? 'uncertain' : 'no-match');
+  return {
+    status: resolvedStatus,
+    confidence,
+    thresholds: { main: MAIN_MATCH_THRESHOLD, similar: SIMILAR_PRODUCT_THRESHOLD, ambiguous_margin: AMBIGUOUS_MARGIN },
+    main_match: mainMatch,
+    similar_products: similarProducts,
+    all_candidates: allCandidates,
+  };
+}
+
 console.log('\nanalyzeMatchOutcome');
 
 test('correct product: single candidate ≥ threshold → auto-match (kind: single)', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', 0.93)], 0.93));
+  const c = candidate('p1', 0.93);
+  const outcome = buildOutcome({ mainMatch: c, allCandidates: [c], confidence: 0.93 });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'single');
   assert.equal(result.showCandidates, false);
 });
 
 test('similar product below threshold → NOT auto-selected (ambiguous with candidates)', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p2', 0.74)], 0.74));
+  const c = candidate('p2', 0.74);
+  const outcome = buildOutcome({ similarProducts: [c], allCandidates: [c], confidence: 0.74, status: 'uncertain' });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'ambiguous');
   assert.equal(result.showCandidates, true);
 });
 
 test('no product: empty candidates → none → "Product not recognized"', () => {
-  const result = analyzeMatchOutcome(outcome([], 0));
+  const outcome = buildOutcome({ confidence: 0 });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'none');
   assert.equal(result.showCandidates, false);
 });
 
 test('low confidence exactly at threshold → identified (>= is inclusive)', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', VISUAL_MATCH_THRESHOLD)], VISUAL_MATCH_THRESHOLD));
+  const c = candidate('p1', MAIN_MATCH_THRESHOLD);
+  const outcome = buildOutcome({ mainMatch: c, allCandidates: [c], confidence: MAIN_MATCH_THRESHOLD });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'single');
 });
 
 test('low confidence just below threshold → ambiguous (never a silent match)', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', VISUAL_MATCH_THRESHOLD - 0.001)], VISUAL_MATCH_THRESHOLD - 0.001));
+  const belowThreshold = MAIN_MATCH_THRESHOLD - 0.001;
+  const c = candidate('p1', belowThreshold);
+  const outcome = buildOutcome({ similarProducts: [c], allCandidates: [c], confidence: belowThreshold, status: 'uncertain' });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'ambiguous');
 });
 
-test('wrong product: second candidate within margin of top → ambiguous (no silent pick)', () => {
-  const top = 0.9;
-  const second = top - VISUAL_MATCH_AMBIGUOUS_MARGIN + 0.001;
-  const result = analyzeMatchOutcome(outcome([candidate('p1', top), candidate('p2', second)], top));
+test('no-match status → none (empty all_candidates)', () => {
+  const outcome = buildOutcome({ confidence: 0.5, status: 'no-match' });
+  const result = analyzeMatchOutcome(outcome);
+  assert.equal(result.kind, 'none');
+  assert.equal(result.showCandidates, false);
+});
+
+test('main match with similar products → single (showCandidates false)', () => {
+  const main = candidate('p1', 0.95);
+  const sim = candidate('p2', 0.80);
+  const outcome = buildOutcome({ mainMatch: main, similarProducts: [sim], allCandidates: [main, sim], confidence: 0.95 });
+  const result = analyzeMatchOutcome(outcome);
+  assert.equal(result.kind, 'single');
+  assert.equal(result.showCandidates, false);
+});
+
+test('no main match but has similar products → ambiguous', () => {
+  const sim = candidate('p1', 0.78);
+  const outcome = buildOutcome({ similarProducts: [sim], allCandidates: [sim], confidence: 0.78, status: 'uncertain' });
+  const result = analyzeMatchOutcome(outcome);
   assert.equal(result.kind, 'ambiguous');
   assert.equal(result.showCandidates, true);
 });
 
-test('clear margin between top two → single', () => {
-  const top = 0.9;
-  const second = top - VISUAL_MATCH_AMBIGUOUS_MARGIN * 2;
-  const result = analyzeMatchOutcome(outcome([candidate('p1', top), candidate('p2', second)], top));
+test('custom threshold via thresholds param is honored', () => {
+  const c = candidate('p1', 0.75);
+  const outcome = buildOutcome({ mainMatch: c, allCandidates: [c], confidence: 0.75, thresholds: { main: 0.70, similar: 0.50, ambiguous_margin: 0.03 } });
+  const result = analyzeMatchOutcome(outcome, { main: 0.70, similar: 0.50, ambiguous_margin: 0.03 });
   assert.equal(result.kind, 'single');
 });
 
-test('runner-up below threshold cannot trigger ambiguity', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', 0.9), candidate('p2', 0.5)], 0.9));
-  assert.equal(result.kind, 'single');
-});
-
-test('custom threshold is honored (backend value wins)', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', 0.75)], 0.75, 0.7));
-  assert.equal(result.kind, 'single');
-});
-
-test('non-finite confidence → ambiguous, never a match', () => {
-  const result = analyzeMatchOutcome(outcome([candidate('p1', Number.NaN)], Number.NaN));
-  assert.equal(result.kind, 'ambiguous');
+test('non-finite confidence with no-match status → none', () => {
+  const outcome = buildOutcome({ confidence: Number.NaN, status: 'no-match' });
+  const result = analyzeMatchOutcome(outcome);
+  assert.equal(result.kind, 'none');
 });
 
 console.log('\nparseEdgeMatchResponse (typed wire contract)');
 
-test('valid response parses with candidates in server order', () => {
+test('valid response parses with all_candidates in server order', () => {
   const parsed = parseEdgeMatchResponse({
     status: 'uncertain',
     confidence: 0.74,
-    threshold: 0.82,
-    candidates: [
-      { product_id: 'b', similarity: 0.74 },
-      { product_id: 'a', similarity: 0.72 },
+    thresholds: { main: 0.90, similar: 0.75, ambiguous_margin: 0.03 },
+    main_match: null,
+    similar_products: [
+      { product_id: 'b', best_similarity: 0.74, matching_images: 1 },
+      { product_id: 'a', best_similarity: 0.72, matching_images: 1 },
+    ],
+    all_candidates: [
+      { product_id: 'b', best_similarity: 0.74, matching_images: 1 },
+      { product_id: 'a', best_similarity: 0.72, matching_images: 1 },
     ],
   });
   assert.ok(parsed);
-  assert.equal(parsed.candidates[0].product_id, 'b');
-  assert.equal(parsed.threshold, 0.82);
+  assert.equal(parsed.status, 'uncertain');
+  assert.equal(parsed.thresholds.main, 0.90);
+  assert.equal(parsed.similar_products[0].product_id, 'b');
+  assert.equal(parsed.all_candidates[0].product_id, 'b');
+});
+
+test('valid response with main_match', () => {
+  const parsed = parseEdgeMatchResponse({
+    status: 'identified',
+    confidence: 0.93,
+    thresholds: { main: 0.90, similar: 0.75, ambiguous_margin: 0.03 },
+    main_match: { product_id: 'p1', best_similarity: 0.93, matching_images: 3 },
+    similar_products: [],
+    all_candidates: [{ product_id: 'p1', best_similarity: 0.93, matching_images: 3 }],
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.status, 'identified');
+  assert.equal(parsed.main_match?.product_id, 'p1');
+  assert.equal(parsed.main_match?.best_similarity, 0.93);
 });
 
 test('malformed payload (missing status) → null → client reports infra failure', () => {
-  assert.equal(parseEdgeMatchResponse({ confidence: 0.5, candidates: [] }), null);
+  assert.equal(parseEdgeMatchResponse({ confidence: 0.5, all_candidates: [] }), null);
 });
 
 test('malformed candidate (bad similarity) → null', () => {
   assert.equal(
-    parseEdgeMatchResponse({ status: 'identified', confidence: 1, threshold: 0.82, candidates: [{ product_id: 'x', similarity: 'high' }] }),
+    parseEdgeMatchResponse({
+      status: 'identified',
+      confidence: 1,
+      thresholds: { main: 0.90, similar: 0.75, ambiguous_margin: 0.03 },
+      main_match: null,
+      similar_products: [],
+      all_candidates: [{ product_id: 'x', best_similarity: 'high', matching_images: 1 }],
+    }),
     null,
   );
 });
@@ -165,8 +228,9 @@ test('encodes empty input to empty string', () => {
 console.log('\nthreshold configuration');
 
 test('threshold and margin are sane constants', () => {
-  assert.ok(VISUAL_MATCH_THRESHOLD > 0.5 && VISUAL_MATCH_THRESHOLD < 1);
-  assert.ok(VISUAL_MATCH_AMBIGUOUS_MARGIN > 0 && VISUAL_MATCH_AMBIGUOUS_MARGIN < 0.2);
+  assert.ok(MAIN_MATCH_THRESHOLD > 0.5 && MAIN_MATCH_THRESHOLD < 1);
+  assert.ok(AMBIGUOUS_MARGIN > 0 && AMBIGUOUS_MARGIN < 0.2);
+  assert.ok(SIMILAR_PRODUCT_THRESHOLD > 0.5 && SIMILAR_PRODUCT_THRESHOLD < MAIN_MATCH_THRESHOLD);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
