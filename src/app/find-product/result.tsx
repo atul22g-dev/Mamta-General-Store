@@ -424,21 +424,24 @@ function useResultPresentation(
 }
 
 /**
- * Low-confidence panel: "Not completely sure" explanation, ranked
- * candidate rows, and the manual-search fallback. Candidates are a small
- * server-limited set — mapped rows in a plain View, intentionally not a
- * separate virtualized list inside the screen's ScrollView.
+ * Below-threshold panel per spec: "Product not recognized" — ranked
+ * candidate rows for disambiguation, a Try Again action, and the
+ * manual-search fallback. Candidates are a small server-limited set —
+ * mapped rows in a plain View, intentionally not a separate virtualized
+ * list inside the screen's ScrollView.
  */
 function AmbiguousCandidates({
   outcome,
   selectedId,
   onSelect,
   onSearchManually,
+  onTryAgain,
 }: {
   outcome: VisualMatchOutcome;
   selectedId: string | null;
   onSelect: (candidate: MatchCandidateView) => void;
   onSearchManually: () => void;
+  onTryAgain: () => void;
 }) {
   const theme = useTheme();
 
@@ -446,7 +449,7 @@ function AmbiguousCandidates({
     <Animated.View entering={FadeInDown.duration(300)} style={styles.stack}>
       <View style={styles.headerRow}>
         <Icon name="help-circle" size={22} color={theme.warning} />
-        <ThemedText type="h3">Not completely sure</ThemedText>
+        <ThemedText type="h3">Product not recognized</ThemedText>
       </View>
       <ThemedText type="bodySmall" themeColor="textSecondary">
         Best confidence was {confidencePercent(outcome.confidence)}, below the{' '}
@@ -475,15 +478,18 @@ function AmbiguousCandidates({
         </View>
         <Button title="Search Manually" size="sm" onPress={onSearchManually} />
       </View>
+      <Button title="Try Again" variant="secondary" onPress={onTryAgain} />
     </Animated.View>
   );
 }
 
 /**
- * Final step of the scan flow. High confidence → "Product Found ✓" card
- * with the DB selling price as the visual centerpiece. Low confidence →
- * "Not completely sure" with ranked candidates, a manual-search fallback,
- * and, for manual picks, the same card without a fabricated match score.
+ * Final step of the scan flow. Similarity ≥ threshold → "Product Found ✓"
+ * card with the DB selling price as the visual centerpiece. Below the
+ * threshold → "Product not recognized" with ranked candidates, Try Again,
+ * and a manual-search fallback — the closest existing product is never
+ * silently selected. Manual picks render the same card without a
+ * fabricated match score.
  */
 export default function FindProductResultScreen() {
   const router = useRouter();
@@ -557,29 +563,31 @@ export default function FindProductResultScreen() {
             </Animated.View>
           )}
 
-          {/* Low confidence — "Not completely sure" */}
+          {/* Low confidence — "Product not recognized" per spec, with
+              ranked candidates for disambiguation. */}
           {isAmbiguous && outcome && (
             <AmbiguousCandidates
               outcome={outcome}
               selectedId={selectedId}
               onSelect={setSelected}
               onSearchManually={handleSearchManually}
+              onTryAgain={handleScanAgain}
             />
           )}
 
-          {/* No match */}
+          {/* No match — spec copy: "Product not recognized" + "Try Again" */}
           {isNoMatch && (
             <EmptyState
-              title="No matching product"
+              title="Product not recognized"
               description="This item isn’t in the catalog yet — or try finding it by name."
               icon={<Icon name="search" size={26} color={theme.accent} />}
               action={
                 <View style={styles.noMatchActions}>
-                  <Button title="Search Manually" onPress={handleSearchManually} />
+                  <Button title="Try Again" onPress={handleScanAgain} />
                   <Button
-                    title="Scan another product"
+                    title="Search Manually"
                     variant="secondary"
-                    onPress={handleScanAgain}
+                    onPress={handleSearchManually}
                   />
                 </View>
               }

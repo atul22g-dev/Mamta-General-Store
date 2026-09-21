@@ -20,6 +20,21 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+/**
+ * Binary → base64 in bounded chunks. `String.fromCharCode(...buffer)`
+ * spreads the whole byte array as call arguments and overflows the stack
+ * (RangeError) at roughly >100KB — i.e. every real photo. Chunking keeps
+ * each spread far below the argument-count limit (audit CRIT-03).
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000; // 32k bytes per String.fromCharCode call
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 interface EmbedRequest {
   /** Product whose images should be embedded; omit to backfill everything missing. */
   product_id?: string;
@@ -106,7 +121,7 @@ Deno.serve(async (req: Request) => {
           }
           const buffer = new Uint8Array(await response.arrayBuffer());
           const contentType = response.headers.get('content-type') ?? 'image/jpeg';
-          const base64 = btoa(String.fromCharCode(...buffer));
+          const base64 = bytesToBase64(buffer);
           return {
             id: image.id,
             dataUri: `data:${contentType};base64,${base64}`,

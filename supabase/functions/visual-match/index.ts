@@ -5,10 +5,16 @@
  *   user photo (base64 data URI)
  *     → embedding provider (Cohere embed-v4.0, 512-dim)
  *     → pgvector cosine similarity over product_images.embedding
- *     → ranked product IDs + similarity scores
+ *     → ranked product IDs + similarity scores (deduplicated per product,
+ *       best similarity kept, server ranking order preserved)
  *     → (the app re-reads the products table for the CURRENT selling_price)
  *
  * No price field exists anywhere in this function's response by design.
+ *
+ * Payload guards: the data URI is size-capped (MAX_IMAGE_BYTES) and
+ * MIME-restricted (png/jpeg/webp) before the paid embedding call — the
+ * cost of an unbounded public endpoint is bounded by design (audit
+ * HIGH-06; rate limiting is additionally available at the gateway level).
  *
  * Secrets (set via `supabase secrets set`): COHERE_API_KEY
  * The publishable anon key travels in the Authorization header from the
@@ -16,6 +22,10 @@
  * anon/authenticated.
  */
 import { getEmbeddingProvider } from '../_shared/embedding.ts';
+
+/** ~7 MB base64 ≈ 5 MB binary — matches the app and storage caps. */
+const MAX_DATA_URI_CHARS = 7_000_000;
+const ALLOWED_IMAGE_MIME = /^data:image\/(png|jpeg|jpg|webp);base64,/;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -51,8 +61,11 @@ Deno.serve(async (req: Request) => {
   try {
     const { image } = (await req.json()) as MatchRequest;
 
-    if (!image || typeof image !== 'string' || !image.startsWith('data:image/')) {
-      return json({ error: 'A data-URI product photo is required.' }, 400);
+    if (!image || typeof image !== 'string' || !ALLOWED_IMAGE_MIME.test(image)) {
+      return json({ error: 'A data-URI product photo is required (png/jpeg/webp).' }, 400);
+    }
+    if (image.length > MAX_DATA_URI_CHARS) {
+      return json({ error: 'The submitted photo is too large.' }, 413);
     }
 
     // 1. Embed the user photo.
@@ -82,19 +95,31 @@ Deno.serve(async (req: Request) => {
 
     const rows = (data ?? []) as { product_id: string; similarity: number }[];
 
-    // 3. Decide: identified only above threshold; otherwise return several
-    //    candidates for the user to disambiguate.
-    const candidates: MatchCandidate[] = rows.map((row) => ({
-      product_id: row.product_id,
-      similarity: row.similarity,
-    }));
+    // 2b. Deduplicate per product: the RPC can return several images of the
+    //     SAME product; one entry per product (its best similarity) keeps
+    //     client keys stable and the ranking honest. RPC order (best first)
+    //     is preserved by the map round-trip.
+    const bestPerProduct = new Map<string, number>();
+    for (const row of rows) {
+      const existing = bestPerProduct.get(row.product_id);
+      if (existing === undefined || row.similarity > existing) {
+        bestPerProduct.set(row.product_id, row.similarity);
+      }
+    }
+    const ranked = [...bestPerProduct.entries()]
+      .map(([product_id, similarity]) => ({ product_id, similarity }))
+      .sort((a, b) => b.similarity - a.similarity);
 
-    const confidence = candidates.length > 0 ? candidates[0].similarity : 0;
+    // 3. Decide: identified only above threshold; otherwise return several
+    //    candidates for the user to disambiguate. The client applies the
+    //    same threshold again after joining live products, so the app
+    //    never auto-shows a product that is not in the catalog.
+    const confidence = ranked.length > 0 ? ranked[0].similarity : 0;
     const response: MatchResponse = {
       status: confidence >= threshold ? 'identified' : 'uncertain',
       confidence,
       threshold,
-      candidates,
+      candidates: ranked,
     };
 
     return json(response, 200);

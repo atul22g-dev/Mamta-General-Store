@@ -394,17 +394,17 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_catalog
 as $$
   select
     pi.product_id,
     pi.id as image_id,
-    1 - (pi.embedding <=> query_embedding) as similarity
+    1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) as similarity
   from public.product_images pi
   where pi.embedding is not null
-    and 1 - (pi.embedding <=> query_embedding) >= match_threshold
-  order by pi.embedding <=> query_embedding
-  limit greatest(match_count, 1);
+    and 1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) >= match_threshold
+  order by pi.embedding operator(pg_catalog.<=>) query_embedding asc
+  limit least(greatest(coalesce(match_count, 5), 1), 25);
 $$;
 
 revoke all on function public.visual_search_matches(vector(512), double precision, integer)

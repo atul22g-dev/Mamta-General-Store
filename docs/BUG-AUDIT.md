@@ -581,7 +581,94 @@ Scope: `profiles`, `products`, `product_images`, `visual_search_matches`, RPC/SE
 ### Monitoring additions from this audit
 
 1. **Storage policy granularity** — 0007 gates on MIME/size at policy level; if the catalog ever needs larger imagery, raise the cap consciously (client + policy together), not by loosening the role gate.
-2. **`visual-match` payload cap** (HIGH-06) remains a client/edge-function fix, but the DB-side RPC is bounded (`match_count` limit-clamped to ≥ 1 rows) — the cost exposure lives in the embedding provider call, not Postgres.
+2. **`visual-match` payload cap** (HIGH-06) — **partially fixed 2026-09-21**: the edge function now enforces a MIME whitelist and size cap before the paid embedding call; per-user rate limiting at the gateway is still open.
+
+---
+
+## Visual matching accuracy fix (2026-09-21)
+
+Scope: the full image-matching pipeline — camera/picker → preview → data-URI conversion → `visual-match` edge function → `visual_search_matches` RPC → product lookup → result screen. The CRITICAL PRICE RULE was verified end-to-end and is now structurally guaranteed: the edge function and RPC return only product ids + similarity; the client re-reads the live `products` table for every displayed price; no price field exists in any matcher response.
+
+### Flow activation (was dead-ended)
+
+The entire real pipeline was unreachable: `preview.tsx` called `submitForMatching`, which returned `not-configured` (`isVisualMatchConfigured = false`) before the searching step could ever run. The flow now routes preview → searching directly; `searching.tsx` invokes the live pipeline (data-URI → edge function → threshold decision → result screen). The stub seam (`service.ts`) is retained for its types but no longer gates the flow.
+
+### MATCH-01 — Flow dead-ended by the not-configured seam
+
+- **Bug ID:** MATCH-01 · **Severity:** High · **Status:** Fixed
+- **File:** `src/app/find-product/preview.tsx`, `src/lib/visual-match/service.ts`
+- **Problem:** Users could never reach matching; the flow always reported "Visual matching is not connected yet".
+- **Fix:** Preview routes into `searching.tsx`, which runs the real pipeline. Submit-state UI removed from preview (busy-state now lives in the searching step where the work actually happens).
+
+### MATCH-02 — Unbounded paid endpoint: no MIME/size cap on `visual-match`
+
+- **Bug ID:** MATCH-02 · **Severity:** High · **Status:** Fixed
+- **File:** `supabase/functions/visual-match/index.ts`
+- **Problem:** Any public caller could POST arbitrary payloads to the paid embedding API (audit HIGH-06).
+- **Fix:** Data-URI MIME whitelist (png/jpeg/webp) + ~5 MB binary cap (`MAX_DATA_URI_CHARS`) enforced before the provider call; oversized → 413.
+
+### MATCH-03 — `embed-product-image` stack overflow on real photos (CRIT-03)
+
+- **Bug ID:** MATCH-03 · **Severity:** Critical · **Status:** Fixed
+- **File:** `supabase/functions/embed-product-image/index.ts`
+- **Problem:** `String.fromCharCode(...buffer)` spread the entire image byte array as call arguments — `RangeError: Maximum call stack size exceeded` at roughly >100 KB, i.e. every real photo. Reference embeddings could never be computed, so visual search could never match anything.
+- **Fix:** Chunked base64 encoder (32 KB per `String.fromCharCode` call), the same proven algorithm as the app's `base64.ts`; unit-tested with a 600 KB buffer.
+
+### MATCH-04 — Data-URI MIME hardcoded to image/jpeg (HIGH-03 partial)
+
+- **Bug ID:** MATCH-04 · **Severity:** Medium · **Status:** Fixed (client half)
+- **File:** `src/lib/visual-match/base64.ts`, `src/lib/visual-match/client.ts`
+- **Problem:** PNG/WebP gallery picks were labeled `image/jpeg`, corrupting providers that trust declared MIME. No size/MIME validation ran before upload.
+- **Fix:** MIME detected from the source URI (web blob URL fragment) with JPEG default for camera captures; client validates `data:image/(png|jpeg|webp);base64,…` shape and the 5 MB cap before any network round-trip.
+
+### MATCH-05 — Duplicate per-product candidates (HIGH-02)
+
+- **Bug ID:** MATCH-05 · **Severity:** High · **Status:** Fixed
+- **File:** `supabase/functions/visual-match/index.ts` (dedup), `src/lib/visual-match/client.ts` (order preservation)
+- **Problem:** Multi-image products produced duplicate candidates → React key collisions and inflated rankings.
+- **Fix:** Edge function deduplicates per product (best similarity kept) and re-sorts best-first; client preserves server order when joining products.
+
+### MATCH-06 — No timeout on the match request (MED-02)
+
+- **Bug ID:** MATCH-06 · **Severity:** Medium · **Status:** Fixed
+- **File:** `src/lib/visual-match/client.ts`, `src/app/find-product/searching.tsx`
+- **Problem:** A hung edge-function call spun the searching screen forever.
+- **Fix:** Hard 20 s timeout (`VISUAL_MATCH_TIMEOUT_MS`) via `AbortController`, combined with the screen's abort signal; `supabase.functions.invoke` now receives `signal`. Network failures surface as friendly retryable errors.
+
+### MATCH-07 — Stale results / duplicate requests / races in the searching step
+
+- **Bug ID:** MATCH-07 · **Severity:** Medium · **Status:** Fixed
+- **File:** `src/app/find-product/searching.tsx`
+- **Problem:** No in-flight guard (double-tap or StrictMode remounts could run two matches); no cancellation; a late response from a superseded run could navigate with stale data.
+- **Fix:** Single in-flight match per mounted screen (`inFlightRef`), `AbortController` cancelled on unmount/cancel, and a monotonic run id so late resolutions of superseded runs are inert.
+
+### MATCH-08 — Ambiguity between near-identical scores silently resolved
+
+- **Bug ID:** MATCH-08 · **Severity:** Medium · **Status:** Fixed
+- **File:** `src/lib/visual-match/decision.ts`, `src/lib/visual-match/threshold.ts` (new)
+- **Problem:** When the top two candidates both cleared the threshold and sat within noise of each other, the UI auto-showed the first — potentially the wrong product and its price.
+- **Fix:** New `VISUAL_MATCH_AMBIGUOUS_MARGIN` (0.03): if the runner-up is within the margin of the top score, the decision downgrades to uncertain (user disambiguates). Threshold + margin are configurable constants with documented rationale (why 0.82: gap between "different but similar product" ≈ 0.70–0.85 and "same product, awkward photo" ≈ 0.85–0.97, biased toward precision — a wrong auto-shown price is worse than a missed auto-match); the backend `MATCH_THRESHOLD` secret still wins at runtime.
+
+### MATCH-09 — Wire contract trusted, not validated; RPC robustness
+
+- **Bug ID:** MATCH-09 · **Severity:** Medium · **Status:** Fixed
+- **Files:** `src/lib/visual-match/edge-contract.ts` (new, typed + runtime parser), `supabase/migrations/0008_visual_search_rpc_hardening.sql` (new), `supabase/setup-all-in-one.sql`
+- **Problem:** The edge response was cast unchecked; the RPC's `greatest(match_count, 1)` turned a zero/negative count into an effectively unbounded LIMIT; `set search_path = public` allowed operator shadowing; deleted products could survive as candidates if the join order was trusted blindly.
+- **Fix:** Full typed wire contract with a runtime parser (`parseEdgeMatchResponse` — malformed payloads become a friendly infra error, never a crash); migration 0008 rewrites the RPC with explicit NULL-embedding exclusion, `least(greatest(coalesce(match_count,5),1),25)` clamping, `search_path = public, pg_catalog` and an explicit `operator(pg_catalog.<=>)` binding (guarantees the pgvector cosine operator, i.e. correct similarity calculation and best-first ordering); the client drops candidate ids whose product row no longer exists (deleted products can never be matched/shown) and reports `no-match` when all vanish.
+
+### MATCH-10 — Spec-mandated copy
+
+- **Bug ID:** MATCH-10 · **Severity:** Low · **Status:** Fixed
+- **File:** `src/app/find-product/result.tsx`
+- **Fix:** Below threshold and no-match now render exactly `Product not recognized` with a `Try Again` action (plus candidate disambiguation below threshold). The closest product is never auto-selected below threshold — verified by unit tests.
+
+### Tests
+
+`tests/visual-match.test.mjs` (new, runs with plain `node`, zero new dependencies — a custom loader transpiles the real TS modules in-memory): **17 passing**, covering correct product / similar product / wrong product (margin ambiguity) / no product / low confidence (inclusive ≥, never a silent match below) / custom backend threshold / non-finite confidence / wire-contract malformed payloads / large-buffer base64 encoding (CRIT-03 parity). Database-failure and network-failure paths were additionally exercised end-to-end in the preview harness against the live backend.
+
+### Verification
+
+`node tests/visual-match.test.mjs` → 17/17 · `npx tsc --noEmit` → 0 errors · `npx eslint . --max-warnings 0` (repo-wide) → 0 problems. Deploying functions (`npm run db:deploy`) applies migrations 0007/0008 and the edge-function changes together; live-behavior re-check after deploy: scan a product with an embedded reference image, and a product with none (should show `Product not recognized`).
 
 ---
 
@@ -589,8 +676,8 @@ Scope: `profiles`, `products`, `product_images`, `visual_search_matches`, RPC/SE
 
 These are design decisions or dormant paths (not defects today) that become active risks under specific conditions:
 
-1. **Dormant real matcher** — `isVisualMatchConfigured = false` in `src/lib/visual-match/service.ts` short-circuits the flow before `searching.tsx`/`client.ts`/the edge functions. Flipping it activates CRIT-03, HIGH-02, HIGH-03, HIGH-06 and MED-02 simultaneously — treat that flag as a release gate.
-2. **No embedding trigger** — nothing in the app or migrations invokes `embed-product-image` after upload; even fixed, new products stay visually unsearchable until a backfill runs.
+1. **Dormant real matcher** — RESOLVED 2026-09-21: the matching flow is live (see "Visual matching accuracy fix"); the seam in `service.ts` remains only for its types.
+2. **No embedding trigger** — nothing in the app invokes `embed-product-image` after upload; new/changed images stay visually unsearchable until a backfill runs (or a trigger is added).
 3. **Staff write policies unused** — RLS deliberately grants staff INSERT on products/images (`0003_rls.sql`), but the UI is admin-only; re-review if staff tooling ships.
 4. **Public catalog read** — anon-readable `products`/`product_images` and a public Storage bucket are by design; revisit if pricing becomes sensitive.
 5. **React Compiler experiment** (`app.json`) — the code avoids try/finally in hot paths for it; re-verify after dependency upgrades.
