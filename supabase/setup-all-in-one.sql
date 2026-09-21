@@ -298,13 +298,17 @@ create policy "product images are publicly readable"
   to anon, authenticated
   using (bucket_id = 'product-images');
 
--- Authenticated staff/admins may upload, but only into a folder that
+-- Staff/admins may upload (0007 hardening): role gate (NULL-role signups
+-- cannot upload), image MIME only, 5 MiB cap, and only into a folder that
 -- matches an existing product id.
-create policy "staff can upload product images"
+create policy "staff and admins can upload product images"
   on storage.objects for insert
   to authenticated
   with check (
     bucket_id = 'product-images'
+    and public.current_role() in ('admin', 'staff')
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
     and exists (
       select 1 from public.products p
       -- ⚠ Must qualify `storage.objects.name` — an unqualified `name`
@@ -320,6 +324,12 @@ create policy "admins can update product images"
   using (
     bucket_id = 'product-images'
     and public.is_admin()
+  )
+  with check (
+    bucket_id = 'product-images'
+    and public.is_admin()
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
   );
 
 create policy "admins can delete product images"
@@ -467,6 +477,20 @@ grant execute on function public.clear_product_embeddings(uuid)
 -- ----------------------------------------------------------------------------
 -- Already created admin-only in the 0003 section above (same name, same
 -- definition); no duplicate drop/create needed in this consolidated file.
+
+-- ============================================================================
+-- 0007 — RLS & storage hardening (see migrations/0007_rls_storage_hardening.sql)
+-- ============================================================================
+-- Maintenance helper stays service-role-only (defensive re-assertion).
+revoke execute on function public.clear_product_embeddings(uuid)
+  from public, anon, authenticated;
+grant execute on function public.clear_product_embeddings(uuid)
+  to service_role;
+
+-- Similarity search stays anon/authenticated-callable BY DESIGN (shop-floor
+-- scans); SECURITY DEFINER exposure is catalog image ids + similarity only.
+comment on function public.visual_search_matches(vector(512), double precision, integer) is
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER by design so anonymous shop-floor scans can search; definer exposure is limited to catalog image ids + similarity scores. NEVER prices, never user data.';
 
 -- ============================================================================
 -- ✅ SCHEMA COMPLETE

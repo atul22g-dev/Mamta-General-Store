@@ -57,6 +57,9 @@ Two lint findings surfaced only by a repo-wide scan were fixed at the root:
 | MED-08 | Medium | Confirmed | Types | Hand-written `database.ts` drifted from real schema; RPC untyped |
 | MED-09 | Medium | Needs Verification | UI / UX | Row entrance animations may replay on FlatList recycle |
 | MED-10 | Medium | Confirmed | Tooling | `create-admin-user.sql` line 1 is prose, not a SQL comment — paste-run fails |
+| SEC-01 | High | Confirmed | Supabase / Storage | Any authenticated user could upload arbitrary files into product folders (no role/MIME/size gate on storage INSERT) |
+| SEC-02 | Medium | Confirmed | Supabase / Storage | Storage UPDATE policy had no WITH CHECK — new row state never re-validated |
+| SEC-03 | Medium | Confirmed (by design, documented) | Supabase / RPC | `visual_search_matches` SECURITY DEFINER exposure — verified read-only & bounded, contract now documented in-schema |
 | LOW-01 | Low | Confirmed | Camera / perf | Permission gate stays mounted behind the live camera; CameraView persists in stack |
 | LOW-02 | Low | Confirmed | Formatting | `PER_UNIT_SUFFIX` couples the literal `'Meter'` to the config value |
 | LOW-03 | Low | Confirmed | Tooling | Deploy script regex only accepts 20-char refs on `.supabase.co` |
@@ -512,6 +515,76 @@ Two lint findings surfaced only by a repo-wide scan were fixed at the root:
 
 ---
 
+## Supabase security audit (2026-09-21)
+
+Scope: `profiles`, `products`, `product_images`, `visual_search_matches`, RPC/SECURITY DEFINER functions, Storage bucket + policies, Edge Functions, service-role exposure. Method: full static review of `supabase/migrations/0001–0006`, `setup-all-in-one.sql`, `create-admin-user.sql`, all three Edge Functions, and every client call site (`src/lib/**`, `src/hooks/**`). **No policy was weakened**; fixes are additive narrowing, delivered as new migration `0007_rls_storage_hardening.sql` (applied migrations were not edited).
+
+### Verified secure (no change required)
+
+| Area | Evidence |
+|---|---|
+| RLS enabled on all tables | `enable row level security` at table creation in 0001/0002, re-asserted in 0003 — plus **`force row level security`** (even table owners go through policies) |
+| Customers cannot write products/images | No INSERT/UPDATE/DELETE policy on `products`/`product_images` targets `anon` — RLS default-deny denies all anonymous writes; the functions' DML policies require `is_admin()`/`current_role() = 'staff'` |
+| Users cannot change or promote their own role | `profiles` UPDATE policy: `with check (id = auth.uid() and role = public.current_role())` — a user writing `role='admin'` fails because `current_role()` (SECURITY DEFINER, search_path locked) still returns the old role. Role changes only via the admin policy. New signups get `role = NULL` (0006) = zero privileges |
+| Access to other users' private data | `profiles` SELECT is `id = auth.uid() or is_admin()` — no cross-user read; no other per-user tables exist |
+| Role-less signups have no privileges | `current_role()` returns NULL → `is_admin()` false, staff checks false; `visual_search_matches` returns only public catalog ids |
+| `clear_product_embeddings` | Granted to `service_role` only (0006 §2) — re-asserted idempotently in 0007 |
+| Service-role key exposure | Present only in Edge Functions (`Deno.env.get`) and docs; the client (`src/lib/supabase.ts`) uses `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (anon) and fails fast if unset; `.env` is gitignored; `.env.example` documents publishable-only |
+| Edge Function authorization | `create-staff`: caller JWT verified → `profiles.role='admin'` checked via the **anon** client (RLS-enforced, so a self-reported role cannot be forged) **before** the service-role client is created; input validated before privileged calls. `embed-product-image`: admin/staff gate before any privileged work |
+| RPC bypass of RLS | The only caller-facing RPC is `visual_search_matches` — read-only over `product_images`, SECURITY DEFINER with `search_path = public`; definer scope bounded to catalog image ids + similarity (no prices, no user data). Grant posture unchanged: `anon, authenticated` — required for anonymous shop-floor scans |
+| Storage path binding | Upload folder must equal an **existing** product id (`storage.foldername` vs `products.id`) |
+
+### SEC-01 — Any authenticated user could upload arbitrary files into product folders
+
+- **Bug ID:** SEC-01
+- **Severity:** High
+- **Status:** Confirmed — **fixed in migration `0007`**
+- **File:** `supabase/migrations/0004_product_images_storage.sql` (policy), fixed by `supabase/migrations/0007_rls_storage_hardening.sql`
+- **Function/component:** Storage policy `staff can upload product images`
+- **Description:** The storage INSERT policy required only `authenticated` + a folder matching an existing product id. Since 0006, self-signups have `role = NULL`, yet they still passed this policy: any authenticated user could upload files of any type (e.g. `text/html` served from a public bucket — stored-XSS hosting) and any size into any existing product's folder.
+- **Root cause:** Policy modeled "which folder" but not "who" or "what content".
+- **Reproduction steps:** Sign up via the Auth API (gets role-less profile) → obtain an authenticated JWT → `POST /storage/v1/object/product-images/<existing-product-id>/x.html` → 200, object stored and publicly served.
+- **Impact:** Arbitrary public content hosting in the store's bucket; unbounded storage cost.
+- **Recommended solution / implemented fix:** Policy rebuilt in 0007 as `staff and admins can upload product images` adding `public.current_role() in ('admin','staff')`, `mimetype like 'image/%'`, `size <= 5 MiB` (existing product-folder check retained).
+- **Why the new policy is secure:** It is a strict narrowing — the role gate excludes every role-less/auth-anon caller; MIME + size gates block non-image payloads and abuse; folder binding still prevents uploads outside real product folders. Client uploads (`uploadProductImage`) send only JPEG/PNG images well under the cap, so legitimate flows are unaffected.
+- **How it was verified:** Static policy review against every client call site (`uploadProductImage` is the sole uploader); SQL cross-checked against `storage.objects` schema (`mimetype`, `size`, `bucket_id`, `storage.foldername`) and the `current_role()`/`is_admin()` SECURITY DEFINER helpers (already granted to `authenticated`). Live policy behavior was not exercised (no DB writes from this audit) — apply via `npm run db:deploy` and re-verify by attempting an upload with a role-less JWT.
+
+### SEC-02 — Storage UPDATE policy missing WITH CHECK
+
+- **Bug ID:** SEC-02
+- **Severity:** Medium
+- **Status:** Confirmed — **fixed in migration `0007`**
+- **File:** `supabase/migrations/0004_product_images_storage.sql`, fixed by `0007_rls_storage_hardening.sql`
+- **Function/component:** Storage policy `admins can update product images`
+- **Description:** The UPDATE policy had a `using(...)` but no `with check(...)`, so the NEW row state was never validated — a client performing a replace/update could rewrite `mimetype`/`size` metadata without constraint.
+- **Root cause:** Half-specified policy ( USING filters the old row; WITH CHECK is required to constrain the new row).
+- **Reproduction steps:** As an admin-authenticated client, update an object with a tampered `mimetype`/`size` payload — accepted under the old policy.
+- **Impact:** Metadata integrity gap on bucket objects (defense-in-depth; the app has no admin object-edit flow, which is why this is Medium, not High).
+- **Recommended solution / implemented fix:** 0007 recreates the policy with both `using(bucket_id + is_admin())` **and** `with check(bucket_id + is_admin() + mimetype like 'image/%' + size ≤ 5 MiB)`.
+- **Why the new policy is secure:** New row state is now re-validated under the same role/content gates as insert; strict narrowing of the previous policy.
+- **How it was verified:** Policy definition review (USING vs WITH CHECK semantics per Postgres/Supabase docs); no live write attempted.
+
+### SEC-03 — `visual_search_matches` SECURITY DEFINER exposure (verified safe; contract documented)
+
+- **Bug ID:** SEC-03
+- **Severity:** Medium (inherent risk, verified bounded)
+- **Status:** Confirmed safe by review — **documented in-schema via 0007**
+- **File:** `supabase/migrations/0005_visual_search.sql` §2, annotated by `0007_rls_storage_hardening.sql`
+- **Function/component:** `public.visual_search_matches(vector, double precision, integer)`
+- **Description:** The RPC runs SECURITY DEFINER to let anonymous visitors search. SECURITY DEFINER functions are privileged objects and warrant explicit audit: if definer scope were broad, an anon caller could reach non-public data.
+- **Root cause:** n/a — architectural requirement (product_images has no anon SELECT policy; a definer-free RPC would return zero rows and break the shop-floor flow).
+- **Impact:** None as reviewed — see verification.
+- **Recommended solution / implemented fix:** No behavior change. 0007 re-asserts the grant set (`anon, authenticated`) and adds an in-database `comment on function` recording the security contract (read-only, bounded exposure, never prices/user data) so future migrations cannot silently widen it unnoticed.
+- **Why this is secure:** Function is `stable`, read-only over `product_images` only; returns `product_id`, `image_id`, `similarity` — all publicly-readable catalog data; `search_path = public` prevents search-path hijacking; no `auth.uid()`-keyed data is reachable from it.
+- **How it was verified:** Full function-body review (no writes, no dynamic SQL, no other tables referenced); grant review (`revoke ... from public` prevents public/owner-default leakage beyond the two intended roles).
+
+### Monitoring additions from this audit
+
+1. **Storage policy granularity** — 0007 gates on MIME/size at policy level; if the catalog ever needs larger imagery, raise the cap consciously (client + policy together), not by loosening the role gate.
+2. **`visual-match` payload cap** (HIGH-06) remains a client/edge-function fix, but the DB-side RPC is bounded (`match_count` limit-clamped to ≥ 1 rows) — the cost exposure lives in the embedding provider call, not Postgres.
+
+---
+
 ## Appendix — Not bugs, but monitor
 
 These are design decisions or dormant paths (not defects today) that become active risks under specific conditions:
@@ -530,9 +603,9 @@ These are design decisions or dormant paths (not defects today) that become acti
 ## Prioritized fix order (suggested)
 
 1. CRIT-01 (rotate credential — do first, outside code)
-2. CRIT-02 (auth resilience) · CRIT-03 (embed encoder)
-3. HIGH-01, HIGH-02, HIGH-06, HIGH-07 (backend correctness & cost)
-4. HIGH-04 + MED-08 together (schema/type alignment)
+2. CRIT-02 ✅ *fixed* · CRIT-03 (embed encoder)
+3. HIGH-01 ✅ *fixed*, HIGH-02, HIGH-06, HIGH-07 · SEC-01 ✅ *fixed* (migration 0007)
+4. HIGH-04 + MED-08 together (schema/type alignment) · SEC-02 ✅ *fixed* (migration 0007)
 5. HIGH-05, HIGH-09, MED-01, MED-02 (client robustness)
 6. HIGH-08 before the first EAS build
 7. HIGH-10, HIGH-12, HIGH-03 (scale & upload hardening)
