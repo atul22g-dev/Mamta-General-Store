@@ -9,8 +9,15 @@ const DURATION = 300;
 /** Single source for the store icon everywhere it is displayed (web). */
 const APP_ICON_SOURCE = require('@/assets/images/play_store_512.png');
 
+/**
+ * Web startup screen lives in the pre-hydration shell (src/app/+html.tsx)
+ * as pure HTML + CSS that auto-dismisses — a React overlay here would be
+ * server-rendered into the static export and could outlive hydration
+ * errors, covering the app forever. This stub keeps the shared import
+ * surface (src/app/_layout.tsx) working on web.
+ */
 export function AnimatedSplashOverlay() {
-  return null; // Web uses the pre-hydration shell in +html.tsx — no JS overlay needed.
+  return null;
 }
 
 const keyframe = new Keyframe({
