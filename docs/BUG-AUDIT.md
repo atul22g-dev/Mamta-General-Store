@@ -672,6 +672,41 @@ The entire real pipeline was unreachable: `preview.tsx` called `submitForMatchin
 
 ---
 
+## Full-app verification pass & loading-screen sync fix (2026-09-21)
+
+### Deep crawl — verified working (no change required)
+
+Every screen driven live in the browser preview against the real backend (exported web build, static server + preview harness):
+
+- **Tabs** — Home, Products (search, category filters, empty state), Settings (health probe live at 588 ms, account section) all render without errors.
+- **Scan flow** — entry screen, and all three deep-links (`/find-product/result`, `/searching`, `/preview`) with no session degrade to clear error panels — no crash, no infinite spinner.
+- **Catalog taps** — intentionally reuse the result card with the live DB price (documented in `products.tsx`); not a routing bug.
+- **Admin guard** — anonymous deep-link to `/admin` redirects to `/admin/login`; the signed-out Home quick action also lands there.
+- **Login errors** — wrong credentials against the live backend show the mapped inline error, no navigation.
+- **Network** — zero failed requests across the whole crawl (fonts, icons, Supabase REST/Storage all 200).
+
+### LOAD-01 — Web boot splash dismissed on a fixed timer, not on app readiness
+
+- **Bug ID:** LOAD-01 · **Severity:** Medium · **Status:** Fixed
+- **File:** `src/app/+html.tsx`, `src/app/_layout.tsx`
+- **Component:** boot splash (pre-hydration shell) / `RootLayout`
+- **Description:** The CSS-only startup screen faded itself out 0.9 s after first paint regardless of whether the JS bundle had loaded. On a slow connection the user saw the splash vanish into a blank page while the bundle was still downloading.
+- **Root cause:** Dismissal was time-based (`animation-delay: .9s`), not readiness-based; React mounting into `#root` never removed the splash sibling node, so nothing tied the fade to actual app availability.
+- **Reproduction:** Throttle network / load the static export on a cold cache; splash disappears at ~0.9 s but content appears seconds later.
+- **Impact:** Slow-network users stare at a blank page — the exact experience the splash exists to cover.
+- **Fix:** `RootLayout` now signals readiness on web mount via `window.__signalAppReady()` (defined in the shell); the splash fades when `html.app-ready` is set. The 8 s CSS fallback remains purely as a fail-safe if the bundle errors before mount, so the splash can still never trap the user.
+- **Verification:** Live preview — `app-ready` class applied on mount, splash fades (opacity 0) after the signal, app interactive behind it; export inspected to confirm the readiness rule, fail-safe rule, signal script, and hashed icon URLs all ship in the static HTML.
+
+### LOAD-02 — Export directories polluted lint runs (tooling)
+
+- **Bug ID:** LOAD-02 · **Severity:** Low · **Status:** Fixed
+- **File:** `eslint.config.js`, `.gitignore`
+- **Description:** Repo-wide ESLint runs failed with ~10k problems whenever a `.expo-*` export directory existed (hit twice during verification).
+- **Root cause:** Flat ESLint config does not read `.gitignore`; only `dist/` and `.expo/` were ignored.
+- **Fix:** Added `.expo-*/**` to global ignores and `.expo-*/` to `.gitignore`.
+
+---
+
 ## Appendix — Not bugs, but monitor
 
 These are design decisions or dormant paths (not defects today) that become active risks under specific conditions:

@@ -2,18 +2,19 @@
  * Embedding provider abstraction for the visual-search backend.
  *
  * The rest of the backend (edge functions) depends only on
- * `embedImages()`; swapping Cohere for another provider (OpenAI CLIP-style,
- * self-hosted model, etc.) means editing this file alone.
+ * `embedImages()`; this file wires the MobileCLIP-S0 ONNX engine.
  *
- * Runs ONLY inside Supabase Edge Functions (Deno). The COHERE_API_KEY is a
+ * Runs ONLY inside Supabase Edge Functions (Deno). The MODEL_URL is a
  * Supabase edge-function secret — it never ships inside the Expo app.
  */
 
-export const EMBEDDING_MODEL = 'embed-v4.0';
+import { embedWithMobileClip, initModelUrl } from './embedding-engine.ts';
+
+export const EMBEDDING_MODEL = 'mobileclip-s0';
 /** Chosen output dimension — matches the pgvector column `vector(512)`. */
 export const EMBEDDING_DIMENSIONS = 512;
 
-/** Data-URI encoded image (jpeg/png/webp/gif), per the Cohere embed API. */
+/** Data-URI encoded image (jpeg/png/webp), per the MobileCLIP-S0 engine. */
 export type ImageDataUri = string;
 
 export type EmbeddingResult = {
@@ -29,65 +30,28 @@ export type EmbeddingProvider = {
 };
 
 // ---------------------------------------------------------------------------
-// Cohere implementation
+// MobileCLIP-S0 implementation
 // ---------------------------------------------------------------------------
 
-const COHERE_EMBED_URL = 'https://api.cohere.com/v2/embed';
+function mobileclipProvider(): EmbeddingProvider {
+  const modelUrl = Deno.env.get('MODEL_URL');
+  if (!modelUrl) {
+    throw new Error(
+      'MODEL_URL secret not configured for edge functions. ' +
+        'Set it via: supabase secrets set MODEL_URL=<storage-url>',
+    );
+  }
+  initModelUrl(modelUrl);
 
-type CohereEmbedResponse = {
-  embeddings?: { float?: number[][] };
-  message?: string;
-};
-
-function cohereProvider(apiKey: string): EmbeddingProvider {
   return {
-    name: 'cohere',
+    name: 'mobileclip-s0',
 
     async embedImages(images: ImageDataUri[]): Promise<EmbeddingResult> {
       if (images.length === 0) {
         return { vectors: [], model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS };
       }
 
-      const response = await fetch(COHERE_EMBED_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: EMBEDDING_MODEL,
-          input_type: 'image',
-          embedding_types: ['float'],
-          output_dimension: EMBEDDING_DIMENSIONS,
-          images,
-        }),
-      });
-
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as CohereEmbedResponse | null;
-        throw new Error(
-          `Embedding provider error (${response.status}): ${body?.message ?? response.statusText}`,
-        );
-      }
-
-      const data = (await response.json()) as CohereEmbedResponse;
-      const vectors = data.embeddings?.float;
-
-      if (!vectors || vectors.length !== images.length) {
-        throw new Error('Embedding provider returned an unexpected response shape.');
-      }
-
-      // Guard the pgvector contract: never persist a vector whose dimension
-      // differs from the vector(512) column — a mismatch would break the
-      // HNSW index and every similarity query. Fail loudly instead.
-      const wrongDim = vectors.findIndex((v) => v.length !== EMBEDDING_DIMENSIONS);
-      if (wrongDim !== -1) {
-        throw new Error(
-          `Embedding provider returned ${vectors[wrongDim].length} dimensions ` +
-            `at index ${wrongDim}; expected ${EMBEDDING_DIMENSIONS}. ` +
-            'Update EMBEDDING_DIMENSIONS and the vector column together.',
-        );
-      }
+      const vectors = await embedWithMobileClip(images);
 
       return { vectors, model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS };
     },
@@ -96,9 +60,5 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
 
 /** Resolves the active provider from edge-function secrets. Throws if unset. */
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const apiKey = Deno.env.get('COHERE_API_KEY');
-  if (!apiKey) {
-    throw new Error('COHERE_API_KEY is not configured for edge functions.');
-  }
-  return cohereProvider(apiKey);
+  return mobileclipProvider();
 }

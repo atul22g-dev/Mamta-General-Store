@@ -1,5 +1,7 @@
 import type { VisualMatchOutcome } from '@/lib/visual-match/types-client';
-import { VISUAL_MATCH_AMBIGUOUS_MARGIN, VISUAL_MATCH_THRESHOLD } from '@/lib/visual-match/threshold';
+import {
+  MAIN_MATCH_THRESHOLD,
+} from '@/lib/visual-match/thresholds';
 
 /**
  * Pure decision logic — deterministic UI state machine for a match outcome.
@@ -8,13 +10,12 @@ import { VISUAL_MATCH_AMBIGUOUS_MARGIN, VISUAL_MATCH_THRESHOLD } from '@/lib/vis
  * Decision contract (user requirement, in order):
  *  1. No candidates (nothing in the catalog looked like the photo)
  *     → 'none' → the UI shows "Product not recognized" + Try Again.
- *  2. Top similarity ≥ threshold AND (single candidate OR clear margin
- *     over the runner-up) → 'single' → auto-show the matched product.
- *  3. Top similarity ≥ threshold but the runner-up is within
- *     AMBIGUOUS_MARGIN → 'ambiguous' → user disambiguates; the system
- *     never silently picks between two near-identical scores.
- *  4. Top similarity < threshold → 'ambiguous' with candidates → the
- *     closest existing product is NOT selected just because it exists.
+ *  2. Main match exists AND passes MAIN_MATCH_THRESHOLD
+ *     → 'single' → auto-show the matched product.
+ *  3. Similar products exist but no main match
+ *     → 'ambiguous' → user disambiguates from similar products.
+ *  4. Nothing passes SIMILAR_PRODUCT_THRESHOLD
+ *     → 'none' → the UI shows "Product not recognized" + Try Again.
  *
  * "Product not recognized + Try Again" is rendered by the result screen
  * for BOTH 'none' and the below-threshold 'ambiguous' case, per spec;
@@ -22,30 +23,28 @@ import { VISUAL_MATCH_AMBIGUOUS_MARGIN, VISUAL_MATCH_THRESHOLD } from '@/lib/vis
  */
 export function analyzeMatchOutcome(
   outcome: VisualMatchOutcome,
-  threshold: number = outcome.threshold || VISUAL_MATCH_THRESHOLD,
-  ambiguousMargin: number = VISUAL_MATCH_AMBIGUOUS_MARGIN,
+  thresholds?: { main: number; similar: number; ambiguous_margin: number },
 ): {
   kind: 'single' | 'ambiguous' | 'none';
   showCandidates: boolean;
 } {
-  if (outcome.status === 'no-match' || outcome.candidates.length === 0) {
+  const mainThreshold = thresholds?.main ?? outcome.thresholds?.main ?? MAIN_MATCH_THRESHOLD;
+
+  // No match at all
+  if (outcome.status === 'no-match' || outcome.all_candidates.length === 0) {
     return { kind: 'none', showCandidates: false };
   }
 
-  const confidence = outcome.confidence;
-  if (!Number.isFinite(confidence) || confidence < threshold) {
+  // Main match exists and passes threshold
+  if (outcome.main_match && outcome.confidence >= mainThreshold) {
+    return { kind: 'single', showCandidates: false };
+  }
+
+  // Has similar products but no clear main match
+  if (outcome.similar_products.length > 0) {
     return { kind: 'ambiguous', showCandidates: true };
   }
 
-  // Two candidates that are equally plausible must not be silently
-  // resolved — the price difference between them could be significant.
-  if (
-    outcome.candidates.length > 1 &&
-    outcome.candidates[1].similarity >= threshold &&
-    confidence - outcome.candidates[1].similarity < ambiguousMargin
-  ) {
-    return { kind: 'ambiguous', showCandidates: true };
-  }
-
-  return { kind: 'single', showCandidates: false };
+  // Nothing passes the similar threshold
+  return { kind: 'none', showCandidates: false };
 }

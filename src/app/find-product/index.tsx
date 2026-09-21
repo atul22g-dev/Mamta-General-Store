@@ -120,10 +120,10 @@ export default function FindProductScreen() {
             ))}
           </View>
 
-          <ThemedView style={[styles.notice, { backgroundColor: theme.warningSoft }]}>
-            <Icon name="sparkles" size={16} color={theme.warning} />
-            <ThemedText type="caption" style={[styles.noticeText, { color: theme.warning }]}>
-              Camera identification is coming soon — the interface is ready for it.
+          <ThemedView style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
+            <Icon name="sparkles" size={16} color={theme.accent} />
+            <ThemedText type="caption" style={[styles.noticeText, { color: theme.accent }]}>
+              AI-powered product recognition is ready — take a photo to search the catalog.
             </ThemedText>
           </ThemedView>
         </Animated.ScrollView>

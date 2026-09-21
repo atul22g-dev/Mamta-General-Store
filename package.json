@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "start": "npx expo start -c",
     "android": "expo start --android",
     "lint": "expo lint",
     "doctor": "npx react-doctor@latest",

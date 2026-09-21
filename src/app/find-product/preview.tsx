@@ -20,7 +20,9 @@ import { scanSession } from '@/lib/scan-session';
  * pipeline is live — the searching step runs it and routes to the result
  * screen; no separate submission round-trip is needed for the one-shot
  * single-photo flow.
- */export default function FindProductPreviewScreen() {
+ */
+
+export default function FindProductPreviewScreen() {
   const router = useRouter();
   const theme = useTheme();
 

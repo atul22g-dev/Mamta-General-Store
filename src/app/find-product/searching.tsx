@@ -19,8 +19,8 @@ import { fileUriToDataUri } from '@/lib/visual-match/base64';
 /** The visible stages of a match run, in order. */
 const STAGES = [
   { key: 'prepare', label: 'Reading your photo' },
+  { key: 'embed', label: 'Generating AI embedding' },
   { key: 'search', label: 'Searching the catalog' },
-  { key: 'price', label: 'Fetching the live price' },
 ] as const;
 
 /**

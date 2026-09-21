@@ -9,8 +9,8 @@
  * service-role client + profiles check) — shop-floor anonymous users
  * cannot embed or mutate reference data.
  *
- * Secrets: COHERE_API_KEY, SUPABASE_SERVICE_ROLE_KEY (edge-only, never
- * inside the mobile app).
+ * Secrets: MODEL_URL (Supabase Storage URL for ONNX model),
+ *          SUPABASE_SERVICE_ROLE_KEY (edge-only, never inside the mobile app).
  */
 import { getEmbeddingProvider } from '../_shared/embedding.ts';
 

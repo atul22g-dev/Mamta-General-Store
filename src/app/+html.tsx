@@ -1,16 +1,20 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import { type PropsWithChildren } from 'react';
 
+// Metro resolves this to the hashed static URL at export time — a literal
+// /assets/images/... path 404s in the static bundle (audit finding).
+const ICON_URL = require('@/assets/images/play_store_512.png') as string;
+
 /**
  * Root HTML shell for web (static output).
  *
  * Includes a CSS-only branded startup screen (`.boot-splash`) that renders
- * with the FIRST byte of HTML — before JS loads — and auto-fades itself via
- * a CSS animation, so it can never get stuck covering the app (a React
- * overlay would be server-rendered into the static bundle and outlive
- * hydration errors). When React mounts, it clears the shell's children and
- * the splash is gone; the animation's `forwards` fill keeps it invisible
- * even if mounting is slow, and dark mode gets the app's dark background.
+ * with the FIRST byte of HTML — before JS loads — and stays up until the
+ * app is actually ready: RootLayout adds the `app-ready` class to <html>
+ * as it mounts (see src/app/_layout.tsx), and that class triggers the
+ * fade. A slow-fallback CSS timer (8s) keeps the dismissal fail-safe if
+ * JS errors before mount, so the splash can never trap the user on a
+ * blank page. Dark mode gets the app's dark background.
  */
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -29,7 +33,11 @@ export default function Root({ children }: PropsWithChildren) {
         <style
           dangerouslySetInnerHTML={{
             __html: `
-#boot-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#FFFFFF;pointer-events:none;animation:boot-hide .5s ease .9s forwards}
+#boot-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#FFFFFF;pointer-events:none}
+html.app-ready #boot-splash{animation:boot-hide .5s ease forwards}
+/* Fail-safe: if the bundle never mounts (JS error, very slow network),
+   fade anyway so the user is never left on a frozen splash. */
+html:not(.app-ready) #boot-splash{animation:boot-hide .5s ease 8s forwards}
 #boot-splash .boot-tile{width:132px;height:132px;border-radius:36px;background:#FFFFFF;box-shadow:0 2px 4px 0 rgba(15,23,42,.04),0 16px 40px 0 rgba(15,23,42,.14);display:flex;align-items:center;justify-content:center;animation:boot-pop .55s cubic-bezier(.34,1.56,.64,1) both}
 #boot-splash img{width:112px;height:112px}
 #boot-splash .boot-title{font-size:28px;line-height:34px;font-weight:700;letter-spacing:-.5px;color:#0F172A;animation:boot-rise .45s ease .18s both}
@@ -50,14 +58,14 @@ export default function Root({ children }: PropsWithChildren) {
 }`,
           }}
         />
-        <link rel="icon" href="/assets/images/play_store_512.png" type="image/png" />
+        <link rel="icon" href={ICON_URL} type="image/png" />
 
         <ScrollViewStyleReset />
       </head>
       <body>
         <div id="boot-splash" aria-hidden="true">
           <div className="boot-tile">
-            <img src="/assets/images/play_store_512.png" alt="" />
+            <img src={ICON_URL} alt="" />
           </div>
           <div className="boot-title">Mamta General Store</div>
           <div className="boot-sub">Scan to price · Inventory in your pocket</div>
@@ -67,6 +75,12 @@ export default function Root({ children }: PropsWithChildren) {
             <div className="boot-dot" />
           </div>
         </div>
+        {/* The splash dismisses when RootLayout signals app-ready (below). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__BOOT_LISTENERS__=[];window.__signalAppReady=function(){document.documentElement.classList.add('app-ready');(window.__BOOT_LISTENERS__||[]).forEach(function(f){try{f()}catch(e){}})};`,
+          }}
+        />
         {children}
       </body>
     </html>

@@ -37,36 +37,45 @@ export type Database = {
         Row: {
           id: string;
           name: string;
+          brand: string | null;
           description: string | null;
           category: Database['public']['Enums']['product_category'];
+          subcategory: string | null;
           mrp: number;
           selling_price: number;
           stock: number;
           unit: Database['public']['Enums']['product_unit'];
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           name: string;
+          brand?: string | null;
           description?: string | null;
           category: Database['public']['Enums']['product_category'];
+          subcategory?: string | null;
           mrp: number;
           selling_price: number;
           stock?: number;
-          unit: Database['public']['Enums']['product_unit'];
+          unit?: Database['public']['Enums']['product_unit'];
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           name?: string;
+          brand?: string | null;
           description?: string | null;
           category?: Database['public']['Enums']['product_category'];
+          subcategory?: string | null;
           mrp?: number;
           selling_price?: number;
           stock?: number;
           unit?: Database['public']['Enums']['product_unit'];
+          is_active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -77,18 +86,21 @@ export type Database = {
           id: string;
           product_id: string;
           image_url: string;
+          image_type: string;
           created_at: string;
         };
         Insert: {
           id?: string;
           product_id: string;
           image_url: string;
+          image_type?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
           product_id?: string;
           image_url?: string;
+          image_type?: string;
           created_at?: string;
         };
         Relationships: [
@@ -103,14 +115,34 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      visual_search_matches: {
+        Args: {
+          query_embedding: string;
+          match_threshold?: number;
+          match_count?: number;
+        };
+        Returns: {
+          product_id: string;
+          image_id: string;
+          similarity: number;
+        }[];
+      };
+    };
     Enums: {
       user_role: 'admin' | 'staff';
       product_category:
-        | 'household'
+        | 'boots'
         | 'personal_care'
-        | 'other';
-      product_unit: 'piece' | 'Meter';
+        | 'toys'
+        | 'cloths'
+        | 'other'
+        | 'groceries'
+        | 'snacks'
+        | 'household'
+        | 'beverages'
+        | 'dairy';
+      product_unit: 'piece' | 'pair' | 'kg' | 'gram' | 'litre' | 'ml' | 'pack' | 'dozen';
     };
     CompositeTypes: Record<string, never>;
   };

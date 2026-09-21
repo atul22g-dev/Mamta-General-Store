@@ -17,6 +17,7 @@ import {
   uploadProductImage,
   removeProductImage,
   getProduct,
+  generateImageEmbedding,
 } from '@/lib/products/product-service';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import { planImageChanges } from '@/lib/products/image-plan';
@@ -41,11 +42,11 @@ function toFormValues(product: {
   return {
     name: product.name,
     description: product.description ?? '',
-    category: product.category,
+    category: product.category as ProductFormValues['category'],
     mrp: String(product.mrp),
     sellingPrice: String(product.selling_price),
     stock: String(product.stock),
-    unit: product.unit,
+    unit: product.unit as ProductFormValues['unit'],
   };
 }
 
@@ -62,6 +63,7 @@ export default function AdminEditProductScreen() {
 
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [embeddingStatus, setEmbeddingStatus] = useState<string | null>(null);
 
   // Derived (not effect-seeded): recomputed whenever a refetch brings new
   // data. `key={product.id}` on the form resets its internal state when
@@ -89,6 +91,7 @@ export default function AdminEditProductScreen() {
 
     setSubmitStatus('submitting');
     setSubmitError(null);
+    setEmbeddingStatus(null);
 
     // 1. Update the product row.
     const updated = await updateProduct(product.id, {
@@ -122,6 +125,10 @@ export default function AdminEditProductScreen() {
       ...add.map((image) => uploadProductImage(product.id, image.uri)),
     ]);
     const failures = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.error]));
+    const uploadSuccesses = outcomes.filter(
+      (outcome): outcome is { ok: true; data: { imageUrl: string; path: string } } =>
+        outcome.ok && 'imageUrl' in (outcome.data as object),
+    );
 
     if (failures.length > 0) {
       // Row is saved; some images failed. Keep the user on the form with
@@ -132,7 +139,27 @@ export default function AdminEditProductScreen() {
       return;
     }
 
-    // Brief success beat, then back to the detail screen.
+    // 3. Generate embeddings for newly uploaded images.
+    //    This is a FREE operation using MobileCLIP-S0 ONNX inference.
+    if (uploadSuccesses.length > 0) {
+      setEmbeddingStatus(
+        `Generating embeddings for ${uploadSuccesses.length} new image${uploadSuccesses.length > 1 ? 's' : ''}...`,
+      );
+
+      const embeddingResults = await Promise.all(
+        uploadSuccesses.map((outcome) => generateImageEmbedding(outcome.data.imageUrl)),
+      );
+
+      const embeddingFailures = embeddingResults.filter((r) => !r.ok);
+      if (embeddingFailures.length > 0) {
+        setSubmitError(
+          `Images uploaded, but ${embeddingFailures.length} embedding${embeddingFailures.length > 1 ? 's' : ''} failed. Images are uploaded but not searchable yet.`,
+        );
+        // Don't return - product is saved, just embeddings failed
+      }
+    }
+
+    // 4. Brief success beat, then back to the detail screen.
     setSubmitStatus('success');
     setTimeout(() => {
       router.back();
@@ -183,6 +210,7 @@ export default function AdminEditProductScreen() {
       submitting={submitStatus === 'submitting' || submitStatus === 'success'}
       submitError={submitError}
       successMessage={submitStatus === 'success' ? 'Changes saved ✓' : null}
+      embeddingStatus={embeddingStatus}
       submitLabel="Save Changes"
       submittingLabel={submitStatus === 'success' ? 'Saved ✓' : 'Saving…'}
       onSubmit={(payload) => void handleSubmit(payload)}
