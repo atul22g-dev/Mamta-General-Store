@@ -17,8 +17,8 @@ import {
   uploadProductImage,
   removeProductImage,
   getProduct,
-  generateImageEmbedding,
 } from '@/lib/products/product-service';
+import { generateProductEmbedding } from '@/lib/products/embedding-service';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import { planImageChanges } from '@/lib/products/image-plan';
 import type { ProductFormValues } from '@/lib/products/product-validation';
@@ -141,21 +141,39 @@ export default function AdminEditProductScreen() {
 
     // 3. Generate embeddings for newly uploaded images.
     //    This is a FREE operation using MobileCLIP-S0 ONNX inference.
+    //    Products without embeddings are NOT searchable by visual match,
+    //    so embedding failure is treated as a hard error.
     if (uploadSuccesses.length > 0) {
       setEmbeddingStatus(
         `Generating embeddings for ${uploadSuccesses.length} new image${uploadSuccesses.length > 1 ? 's' : ''}...`,
       );
 
-      const embeddingResults = await Promise.all(
-        uploadSuccesses.map((outcome) => generateImageEmbedding(outcome.data.imageUrl)),
-      );
+      const embeddingResult = await generateProductEmbedding(product.id);
 
-      const embeddingFailures = embeddingResults.filter((r) => !r.ok);
-      if (embeddingFailures.length > 0) {
+      if (!embeddingResult.ok) {
+        setSubmitStatus('error');
         setSubmitError(
-          `Images uploaded, but ${embeddingFailures.length} embedding${embeddingFailures.length > 1 ? 's' : ''} failed. Images are uploaded but not searchable yet.`,
+          `Product saved, but embedding generation failed: ${embeddingResult.error} ` +
+            `The product is not searchable by image yet. You can edit the product to retry.`,
         );
-        // Don't return - product is saved, just embeddings failed
+        return;
+      }
+
+      if (embeddingResult.data.failed.length > 0) {
+        setSubmitError(
+          `Product saved, but ${embeddingResult.data.failed.length} image embedding` +
+            `${embeddingResult.data.failed.length > 1 ? 's' : ''} failed. ` +
+            `The product may not be fully searchable by image.`,
+        );
+      }
+
+      if (!embeddingResult.data.hasEmbedding) {
+        setSubmitStatus('error');
+        setSubmitError(
+          'Product saved, but no embeddings were generated. ' +
+            'The product is not searchable by image. You can edit the product to retry.',
+        );
+        return;
       }
     }
 
