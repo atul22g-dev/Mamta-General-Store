@@ -34,7 +34,7 @@ export default function ProtectedAdminLayout() {
   if (status === 'loading') {
     return (
       <ThemedView style={styles.center}>
-        <Loading text="Checking your access…" />
+        <Loading text="Checking your access…" showIcon />
       </ThemedView>
     );
   }

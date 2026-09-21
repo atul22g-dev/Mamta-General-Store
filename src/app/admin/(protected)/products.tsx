@@ -48,7 +48,7 @@ function AdminListStates({
   const theme = useTheme();
 
   if (loading) {
-    return <Loading text="Loading products…" />;
+    return <Loading text="Loading products…" showIcon />;
   }
   if (status === 'error') {
     return (

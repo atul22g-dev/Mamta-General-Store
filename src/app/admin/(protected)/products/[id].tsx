@@ -267,7 +267,7 @@ export default function AdminProductDetailScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        {status === 'loading' && <Loading text="Loading product…" style={styles.centerState} />}
+        {status === 'loading' && <Loading text="Loading product…" showIcon style={styles.centerState} />}
 
         {status === 'error' && (
           <View style={styles.centerState}>

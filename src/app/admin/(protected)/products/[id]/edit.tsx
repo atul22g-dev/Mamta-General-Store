@@ -142,7 +142,7 @@ export default function AdminEditProductScreen() {
   if (status === 'loading') {
     return (
       <ThemedView style={styles.center}>
-        <Loading text="Loading product…" />
+        <Loading text="Loading product…" showIcon />
       </ThemedView>
     );
   }

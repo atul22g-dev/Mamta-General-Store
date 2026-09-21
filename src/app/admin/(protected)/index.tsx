@@ -85,7 +85,7 @@ export default function AdminDashboardScreen() {
           </View>
 
           {status === 'loading' ? (
-            <Loading text="Loading inventory…" />
+            <Loading text="Loading inventory…" showIcon />
           ) : status === 'error' ? (
             <ErrorState
               description={errorMessage ?? 'Could not reach the database.'}

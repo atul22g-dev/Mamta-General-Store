@@ -3,10 +3,14 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { Keyframe, Easing } from 'react-native-reanimated';
 
 import classes from './animated-icon.module.css';
+
 const DURATION = 300;
 
+/** Single source for the store icon everywhere it is displayed (web). */
+const APP_ICON_SOURCE = require('@/assets/images/play_store_512.png');
+
 export function AnimatedSplashOverlay() {
-  return null;
+  return null; // Web uses the pre-hydration shell in +html.tsx — no JS overlay needed.
 }
 
 const keyframe = new Keyframe({
@@ -54,19 +58,23 @@ const glowKeyframe = new Keyframe({
   },
 });
 
+/**
+ * Animated app icon (web): the store icon inside a rounded brand-tinted
+ * tile with a slow rotating glow behind it. Mirrors the native variant.
+ */
 export function AnimatedIcon() {
   return (
     <View style={styles.iconContainer}>
       <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
-        <Image style={styles.glow} source={require('@/assets/images/logo-glow.png')} />
+        <Image style={styles.glow} source={APP_ICON_SOURCE} contentFit="contain" />
       </Animated.View>
 
       <Animated.View style={styles.background} entering={keyframe.duration(DURATION)}>
-        <div className={classes.expoLogoBackground} />
+        <div className={classes.storeIconBackground} />
       </Animated.View>
 
       <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
-        <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />
+        <Image style={styles.image} source={APP_ICON_SOURCE} contentFit="contain" />
       </Animated.View>
     </View>
   );
@@ -88,6 +96,7 @@ const styles = StyleSheet.create({
     width: 201,
     height: 201,
     position: 'absolute',
+    opacity: 0.18,
   },
   iconContainer: {
     justifyContent: 'center',
@@ -97,8 +106,8 @@ const styles = StyleSheet.create({
   },
   image: {
     position: 'absolute',
-    width: 76,
-    height: 71,
+    width: 96,
+    height: 96,
   },
   background: {
     width: 128,

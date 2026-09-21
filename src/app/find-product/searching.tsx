@@ -175,7 +175,7 @@ export default function FindProductSearchingScreen() {
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         {phase === 'working' ? (
           <View style={styles.center}>
-            <Loading text="Matching your photo against the catalog…" />
+            <Loading text="Matching your photo against the catalog…" showIcon />
             <StageList />
           </View>
         ) : (
