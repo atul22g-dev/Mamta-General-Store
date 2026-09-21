@@ -89,18 +89,22 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public, pg_catalog
+-- Search path includes the pgvector operator schemas; do NOT pin
+-- operator(pg_catalog.<=>) here — pgvector is installed in public/extensions
+-- on real projects, so the pg_catalog qualification fails with 42883
+-- (see migration 0008 for the full history).
+set search_path = public, extensions, pg_catalog
 as $$
   select
     pi.product_id,
     pi.id as image_id,
-    1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) as similarity
+    1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   inner join public.products p on p.id = pi.product_id
   where pi.embedding is not null
     and p.is_active = true
-    and 1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) >= match_threshold
-  order by pi.embedding operator(pg_catalog.<=>) query_embedding asc
+    and 1 - (pi.embedding <=> query_embedding) >= match_threshold
+  order by pi.embedding <=> query_embedding asc
   limit least(greatest(coalesce(match_count, 5), 1), 25);
 $$;
 

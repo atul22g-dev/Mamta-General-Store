@@ -152,10 +152,10 @@ Correct by design. ✔ (Price display currently fails only because product fetch
 
 - App: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (present in `.env`; key is
   `sb_publishable_…` format). ✔
-- Edge secrets required by **current repo code**: `MODEL_URL` (public URL of the MobileCLIP ONNX model).
-  **Not present** — no `models` bucket exists in Storage (probed: NoSuchBucket). The export script
-  (`scripts/export-mobileclip-onnx.mjs`) needs dev deps (`@xenova/transformers`, `onnxruntime-node`)
-  that are **not in package.json**.
+- Edge secrets required by **current repo code**: NONE for the default free provider —
+  MobileCLIP-S0 is downloaded from the HF Hub in-edge (11.8 MB quantized vision ONNX).
+  (The original audit finding — missing `MODEL_URL` secret and no `models` bucket — is now
+  moot; `scripts/export-mobileclip-onnx.mjs` was removed as obsolete on 2026-09-22.)
 - Edge secrets required by **deployed old code**: `COHERE_API_KEY` — **not set** (proven by the 500).
 - Optional threshold secrets: MAIN/SIMILAR/AMBIGUOUS/EDGE_CANDIDATE_LIMIT (defaults used when absent).
 
@@ -180,7 +180,7 @@ Correct by design. ✔ (Price display currently fails only because product fetch
 
 1. `supabase/setup-all-in-one.sql` — documented dev-reset script; referenced by README/troubleshooting → KEEP.
 2. `supabase/fix-product-images.sql`, `supabase/sync-product-options.sql` — standalone repair scripts, no code references → UNCERTAIN (keep unless owner confirms obsolete; they are one-paste DB tools).
-3. `scripts/export-mobileclip-onnx.mjs` — references deps absent from package.json → UNCERTAIN (document, don't delete; it is the only model-export path).
+3. `scripts/export-mobileclip-onnx.mjs` — ~~UNCERTAIN~~ **removed** (2026-09-22): the engine now fetches the model from the HF Hub directly, so no local export step exists.
 4. `src/components/themed-view.tsx` / other components — need import-graph verification (Phase 11).
 5. Legacy doc reports (BUG_AUDIT.md, docs/BUG-AUDIT.md, *\_FIXES.md, FINAL_BUG_REPORT.md, SECURITY_AUDIT.md, FIND_PRODUCT_\*.md) — historical records → KEEP (documentation, no runtime impact).
 6. `.expo-fulltest/`, `.claude/`, `.freebuff/`, `.vscode/`, `.github/` — tooling/config → KEEP.
