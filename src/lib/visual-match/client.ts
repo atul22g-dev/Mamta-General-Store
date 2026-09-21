@@ -24,16 +24,9 @@ import {
   VISUAL_MATCH_MAX_IMAGE_BYTES,
 } from '@/lib/visual-match/thresholds';
 import type { ServiceResult } from '@/lib/visual-match/types';
+import { isValidEmbeddingDataUri } from '@/lib/image-pipeline';
 
 export type { MatchCandidateView, VisualMatchOutcome };
-
-/** Validated data URI (size + MIME) before any network round-trip. */
-function isValidDataUri(dataUri: string): boolean {
-  if (dataUri.length > VISUAL_MATCH_MAX_IMAGE_BYTES) return false;
-  // WebP is NOT supported by the MobileCLIP-S0 embedding engine (no decoder).
-  // Only JPEG and PNG are accepted end-to-end.
-  return /^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/.test(dataUri);
-}
 
 /**
  * Combines the caller's abort signal with a hard timeout. The timeout is
@@ -111,7 +104,7 @@ export async function matchProductFromPhoto(
   dataUri: string,
   signal?: AbortSignal,
 ): Promise<ServiceResult<VisualMatchOutcome>> {
-  if (!isValidDataUri(dataUri)) {
+  if (!isValidEmbeddingDataUri(dataUri)) {
     return {
       ok: false,
       error:

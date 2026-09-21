@@ -14,6 +14,7 @@ import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useGalleryPick } from '@/hooks/use-gallery-pick';
 import { scanSession } from '@/lib/scan-session';
+import { validateImageFile } from '@/lib/image-pipeline';
 
 type Phase = 'checking' | 'undetermined' | 'denied' | 'ready';
 
@@ -281,6 +282,14 @@ export default function FindProductCameraScreen() {
 
     if (!photo?.uri) {
       setCaptureError('Capture failed — try again.');
+      setCapturing(false);
+      return;
+    }
+
+    // Validate the captured image (file exists, size OK, format supported).
+    const validation = await validateImageFile(photo.uri);
+    if (!validation.ok) {
+      setCaptureError(validation.errorMessage);
       setCapturing(false);
       return;
     }
