@@ -4,9 +4,17 @@
  * grouping via en-IN lakhs/crores, exactly 2 decimals when fractional).
  */
 export function formatPrice(value: number): string {
-  if (!Number.isFinite(value)) return '—';
-  const hasFraction = value % 1 !== 0;
-  return `₹${value.toLocaleString('en-IN', {
+  // Supabase may return numeric columns as strings in some configurations.
+  // Coerce strings to numbers so the UI never shows raw type artifacts.
+  const num = typeof value === 'string' ? Number(value) : value;
+  if (!Number.isFinite(num)) {
+    if (typeof value === 'string' || value == null) {
+      console.warn(`[formatPrice] Non-numeric price value: ${JSON.stringify(value)} — check products.selling_price column`);
+    }
+    return '—';
+  }
+  const hasFraction = num % 1 !== 0;
+  return `₹${num.toLocaleString('en-IN', {
     minimumFractionDigits: hasFraction ? 2 : 0,
     maximumFractionDigits: 2,
   })}`;

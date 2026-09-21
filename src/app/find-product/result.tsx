@@ -47,13 +47,21 @@ function unitLabel(unit: string): string {
   return UNIT_LABELS[unit as ProductUnit] ?? unit;
 }
 
+function toNum(v: unknown): number {
+  return typeof v === 'string' ? Number(v) : (v as number);
+}
+
 function hasDiscount(product: ProductWithImages): boolean {
-  return product.mrp !== product.selling_price && product.mrp > product.selling_price;
+  const mrp = toNum(product.mrp);
+  const sp = toNum(product.selling_price);
+  return mrp !== sp && mrp > sp;
 }
 
 function savePercent(product: ProductWithImages): number {
-  if (!hasDiscount(product) || product.mrp <= 0) return 0;
-  return Math.round(((product.mrp - product.selling_price) / product.mrp) * 100);
+  const mrp = toNum(product.mrp);
+  const sp = toNum(product.selling_price);
+  if (!hasDiscount(product) || mrp <= 0) return 0;
+  return Math.round(((mrp - sp) / mrp) * 100);
 }
 
 // ---------------------------------------------------------------------------
