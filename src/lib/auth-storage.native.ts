@@ -3,21 +3,19 @@
  *
  * The `.native.ts` extension is resolved by Metro for native platforms and
  * EXCLUDED from web builds by the resolver itself — so the browser bundle
- * never sees expo-sqlite (or its wasm/worker stack) at all.
+ * never sees AsyncStorage at all.
  *
- * The polyfill installs a localStorage implementation backed by SQLite.
- * Side-effect import runs before this module's exports are used, so the
- * global is guaranteed to exist once `resolveAuthStorage()` is called.
+ * Uses @react-native-async-storage/async-storage, which ships inside
+ * Expo Go — sessions persist in Expo Go AND in dev/production builds.
+ * (expo-sqlite's localStorage polyfill is NOT part of Expo Go since the
+ * SDK's SQLite removal, and crashed the app at launch with
+ * "Something went wrong".)
+ *
+ * supabase-js supports async storage natively: it awaits getItem/setItem
+ * during session restore, so no read-through shim is needed.
  */
-import 'expo-sqlite/localStorage/install';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/** Minimal async-safe storage surface supabase-js needs. */
-type AuthStorage = {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-  removeItem: (key: string) => void;
-};
-
-export function resolveAuthStorage(): AuthStorage {
-  return globalThis.localStorage as AuthStorage;
+export function resolveAuthStorage() {
+  return AsyncStorage;
 }

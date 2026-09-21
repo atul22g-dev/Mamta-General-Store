@@ -4,15 +4,72 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Button } from '@/components/ui/button';
+import { Icon } from '@/components/ui/icon';
 import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants';
+import { Spacing, Radius } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
 import { scanSession } from '@/lib/scan-session';
 import { matchSession } from '@/lib/visual-match/session';
 import { matchProductFromPhoto } from '@/lib/visual-match/client';
 import { fileUriToDataUri } from '@/lib/visual-match/base64';
+
+/** The visible stages of a match run, in order. */
+const STAGES = [
+  { key: 'prepare', label: 'Reading your photo' },
+  { key: 'search', label: 'Searching the catalog' },
+  { key: 'price', label: 'Fetching the live price' },
+] as const;
+
+/**
+ * Stage tracker shown while matching runs. The first stage highlights
+ * immediately, then each next one lights up on a fixed cadence so the
+ * wait communicates progress instead of a silent spinner.
+ */
+function StageList() {
+  const theme = useTheme();
+  const [stageIndex, setStageIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStageIndex((current) => Math.min(current + 1, STAGES.length - 1));
+    }, 1400);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <View style={styles.stageList}>
+      {STAGES.map((stage, index) => {
+        const done = index < stageIndex;
+        const active = index === stageIndex;
+        const color = done ? theme.success : active ? theme.accent : theme.textTertiary;
+        return (
+          <View key={stage.key} style={styles.stageRow}>
+            <View
+              style={[
+                styles.stageDot,
+                { backgroundColor: done || active ? color : theme.surfaceSecondary },
+              ]}>
+              <Icon
+                name={done ? 'checkmark' : active ? 'ellipse' : 'ellipse-outline'}
+                size={done ? 14 : 10}
+                color={done || active ? '#FFFFFF' : theme.textTertiary}
+              />
+            </View>
+            <ThemedText
+              type="bodySmall"
+              themeColor={done || active ? 'text' : 'textTertiary'}
+              style={styles.stageLabel}>
+              {stage.label}
+            </ThemedText>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 type Phase = 'working' | 'error';
 
@@ -74,9 +131,7 @@ export default function FindProductSearchingScreen() {
         {phase === 'working' ? (
           <View style={styles.center}>
             <Loading text="Matching your photo against the catalog…" />
-            <ThemedText type="caption" themeColor="textTertiary" style={styles.subtext}>
-              Embedding the image · searching by visual similarity
-            </ThemedText>
+            <StageList />
           </View>
         ) : (
           <View style={styles.center}>
@@ -116,12 +171,26 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.three,
+    gap: Spacing.four,
     padding: Spacing.four,
   },
-  subtext: {
-    textAlign: 'center',
+  stageList: {
+    gap: Spacing.two,
+    alignSelf: 'flex-start',
   },
+  stageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  stageDot: {
+    width: 22,
+    height: 22,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stageLabel: {},
   errorPanel: {
     alignSelf: 'stretch',
   },

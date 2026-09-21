@@ -1,4 +1,8 @@
+import { Platform } from 'react-native';
+import { File } from 'expo-file-system';
+
 import { supabase } from '@/lib/supabase';
+import { uuid } from '@/lib/uuid';
 import { escapeIlike } from '@/lib/products/image-plan';
 import { toUserMessage } from '@/lib/errors';
 import type { Product } from '@/types/database';
@@ -56,6 +60,39 @@ export async function createProduct(
 }
 
 /**
+ * Reads an image into bytes from any source the pickers/camera produce:
+ *   • file:// URIs (native camera capture, gallery)  → expo-file-system
+ *   • blob:/data:/https:// URIs (web picker, previews) → fetch
+ *
+ * Why not fetch() for everything: React Native's fetch does not reliably
+ * support file:// URIs on Android's new architecture (Expo Go included) —
+ * it fails with an opaque network error, which surfaced to users as
+ * "Could not read the selected image" on every upload. The File API reads
+ * straight from disk via the native module and has no such limitation.
+ */
+async function readImageBytes(localUri: string): Promise<Uint8Array> {
+  const isFileUri = /^file:|^content:/i.test(localUri);
+
+  if (isFileUri && Platform.OS !== 'web') {
+    const file = new File(localUri);
+    if (!file.exists) {
+      throw new Error('The selected image is no longer available. Pick it again.');
+    }
+    return new Uint8Array(await file.arrayBuffer());
+  }
+
+  // Web blobs and remote URLs go through fetch (unchanged behavior).
+  // fetch() resolves even on failure (it does not reject on HTTP errors),
+  // so check the status before consuming the body — otherwise a failed
+  // read would upload empty/corrupt bytes and report success.
+  const response = await fetch(localUri);
+  if (!response.ok) {
+    throw new Error('Could not read the selected image. Pick it again and retry.');
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
  * Uploads an image to the product-images bucket under the product's folder
  * and attaches a product_images row. If the DB attach fails, the uploaded
  * object is removed so no orphaned files accumulate.
@@ -67,24 +104,20 @@ export async function uploadProductImage(
   productId: string,
   localUri: string,
 ): Promise<ServiceResult<{ imageUrl: string; path: string }>> {
-  // Fetch the binary from the local URI (works on native and web blobs).
-  // fetch() resolves even on failure (it does not reject on HTTP errors),
-  // so check the status before consuming the body — otherwise a failed
-  // read would upload empty/corrupt bytes and report success.
-  const response = await fetch(localUri);
-  if (!response.ok) {
+  let bytes: Uint8Array;
+  try {
+    bytes = await readImageBytes(localUri);
+  } catch (readError) {
     return {
       ok: false,
-      error: 'Could not read the selected image. Pick it again and retry.',
+      error: toMessage(readError, 'Could not read the selected image. Pick it again and retry.'),
     };
   }
-  const arrayBuffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
 
   // Derive a safe extension from the URI, defaulting to jpg.
   const match = /\.([a-zA-Z0-9]+)(?:[?#].*)?$/.exec(localUri);
   const ext = (match?.[1] ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const objectName = `${productId}/${crypto.randomUUID()}.${ext}`;
+  const objectName = `${productId}/${uuid()}.${ext}`;
 
   const { error: uploadError } = await supabase.storage
     .from('product-images')

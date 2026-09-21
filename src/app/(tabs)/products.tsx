@@ -20,6 +20,7 @@ import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Typography } from '@/
 import { useTheme } from '@/hooks/use-theme';
 import { useProductSearch } from '@/hooks/use-product-search';
 import { formatPriceWithUnit } from '@/lib/format';
+import { PriceText } from '@/components/ui/price-text';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
@@ -29,6 +30,7 @@ import {
 } from '@/lib/products/product-validation';
 import { matchSession } from '@/lib/visual-match/session';
 import type { ProductWithImages } from '@/lib/products/product-service';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
@@ -49,7 +51,7 @@ function CatalogCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = product.product_images[0]?.image_url;
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
 
   return (
     <Animated.View entering={FadeInDown.duration(280).delay(Math.min(index, 8) * 45)}>
@@ -83,9 +85,9 @@ function CatalogCard({
           </ThemedText>
         </View>
 
-        <ThemedText type="h3" style={{ color: theme.accent }}>
+        <PriceText variant="card">
           {formatPriceWithUnit(product.selling_price, product.unit)}
-        </ThemedText>
+        </PriceText>
       </Pressable>
     </Animated.View>
   );
@@ -145,13 +147,15 @@ export default function ProductsScreen() {
         accessibilityLabel="Search catalog by product name"
       />
 
-      {/* Category chips (short fixed set, horizontal FlatList) */}
+      {/* Category chips (short fixed set, horizontal FlatList).
+          flexGrow: 0 — keeps rows from stretching vertically. */}
       <FlatList
         horizontal
         data={CHIP_FILTERS}
         keyExtractor={(item) => item}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
+        style={styles.chipList}
         renderItem={({ item }) => (
           <Chip
             label={item === 'all' ? 'All' : CATEGORY_LABELS[item]}
@@ -278,6 +282,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.one,
   },
+  chipList: {
+    flexGrow: 0,
+  },
   chip: {
     minHeight: 44,
     justifyContent: 'center',
@@ -303,8 +310,8 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   cardThumb: {
-    width: 52,
-    height: 52,
+    width: 72,
+    height: 72,
     borderRadius: Radius.md,
     backgroundColor: 'rgba(100,116,139,0.12)',
   },

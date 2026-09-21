@@ -18,6 +18,7 @@ import {
   removeProductImage,
   getProduct,
 } from '@/lib/products/product-service';
+import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import { planImageChanges } from '@/lib/products/image-plan';
 import type { ProductFormValues } from '@/lib/products/product-validation';
 import type { Database } from '@/types/database';
@@ -74,7 +75,9 @@ export default function AdminEditProductScreen() {
       product
         ? product.product_images.map((image) => ({
             id: image.id, // stable DB identity — React keys derive from this
-            uri: image.image_url,
+            // display URI resolves raw paths; `url` keeps the RAW value so
+            // image-plan dedupe/removal keeps working against the DB column.
+            uri: getProductImageUrl(image.image_url) ?? '',
             url: image.image_url,
           }))
         : null,

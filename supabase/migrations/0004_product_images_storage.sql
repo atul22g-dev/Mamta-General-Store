@@ -4,7 +4,7 @@
 -- Bucket layout: product-images/<product_id>/<uuid>.<ext>
 -- Public read (catalog images), staff/admin write. Paths embed the product
 -- id, and the object key must live under a folder named for an existing
--- product — enforced by storage.foldername(name) checks in the policies.
+-- product — enforced by storage.foldername(storage.objects.name) checks in the policies.
 
 insert into storage.buckets (id, name, public)
 values ('product-images', 'product-images', true)
@@ -25,7 +25,10 @@ create policy "staff can upload product images"
     bucket_id = 'product-images'
     and exists (
       select 1 from public.products p
-      where p.id::text = (storage.foldername(name))[1]
+      -- ⚠ Must qualify `storage.objects.name` — an unqualified `name`
+      -- inside this subquery binds to products.name (display name),
+      -- never matches the product id, and rejects every upload.
+      where p.id::text = (storage.foldername(storage.objects.name))[1]
     )
   );
 

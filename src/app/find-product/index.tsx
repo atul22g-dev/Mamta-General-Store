@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { useGalleryPick } from '@/hooks/use-gallery-pick';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -19,6 +20,8 @@ const TIPS = [
 export default function FindProductScreen() {
   const theme = useTheme();
   const router = useRouter();
+  // Shared gallery-pick hook (same pipeline as the camera shutter).
+  const { picking, pickFromGallery } = useGalleryPick();
 
   return (
     <ThemedView style={styles.container}>
@@ -85,10 +88,19 @@ export default function FindProductScreen() {
               ]}>
               <Icon name="camera" size={24} color={theme.white} />
             </Pressable>
-            <View
-              style={[styles.galleryTile, { backgroundColor: theme.surfaceSecondary }]}>
-              <Icon name="images" size={20} color={theme.textSecondary} />
-            </View>
+            <Pressable
+              onPress={() => void pickFromGallery()}
+              disabled={picking}
+              accessibilityRole="button"
+              accessibilityLabel="Pick a product photo from the gallery"
+              accessibilityState={{ busy: picking }}
+              style={({ pressed }) => [
+                styles.galleryTile,
+                { backgroundColor: theme.surfaceSecondary },
+                pressed && styles.galleryTilePressed,
+              ]}>
+              <Icon name="images" size={20} color={theme.accent} />
+            </Pressable>
           </View>
 
           {/* Tips */}
@@ -193,6 +205,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  galleryTilePressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.95 }],
   },
   shutterPressed: {
     opacity: 0.85,
