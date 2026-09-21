@@ -3,7 +3,8 @@
  *
  * Flow (the AI NEVER touches prices):
  *   user photo (base64 data URI)
- *     → MobileCLIP-S0 embedding (free, ONNX, 512-dim)
+ *     → MobileCLIP-S0 embedding (free, ONNX, 512-dim float32)
+ *     → validate embedding dimensions + finite values
  *     → pgvector cosine similarity over product_images.embedding
  *     → group results by product (best score per product)
  *     → determine main match (above MAIN_MATCH_THRESHOLD)
@@ -19,7 +20,7 @@
  *   - AMBIGUOUS_MARGIN (default: 0.03)
  *   - EDGE_CANDIDATE_LIMIT (default: 20)
  */
-import { getEmbeddingProvider } from '../_shared/embedding.ts';
+import { getEmbeddingProvider, EMBEDDING_DIMENSIONS, validateEmbeddingVector } from '../_shared/embedding.ts';
 
 // ---------------------------------------------------------------------------
 // Configuration from environment secrets
@@ -49,7 +50,7 @@ const CORS_HEADERS = {
 // ---------------------------------------------------------------------------
 
 interface MatchRequest {
-  /** The user's captured photo as a data URI (image/jpeg|png|webp). */
+  /** The user's captured photo as a data URI (image/jpeg|png). */
   image: string;
 }
 
@@ -230,7 +231,7 @@ Deno.serve(async (req: Request) => {
 
     // Validate input
     if (!image || typeof image !== 'string' || !ALLOWED_IMAGE_MIME.test(image)) {
-      return json({ error: 'A data-URI product photo is required (png/jpeg/webp).' }, 400);
+      return json({ error: 'A data-URI product photo is required (png/jpeg).' }, 400);
     }
     if (image.length > MAX_DATA_URI_CHARS) {
       return json({ error: 'The submitted photo is too large.' }, 413);
@@ -239,7 +240,18 @@ Deno.serve(async (req: Request) => {
     // 1. Embed the user photo using MobileCLIP-S0 (FREE, no API keys)
     const provider = getEmbeddingProvider();
     const { vectors } = await provider.embedImages([image]);
+
+    // Validate the embedding result before using it
+    if (!vectors || !Array.isArray(vectors) || vectors.length === 0) {
+      return json({ error: 'Embedding generation returned no vectors.' }, 500);
+    }
+
     const queryVector = vectors[0];
+
+    const vectorError = validateEmbeddingVector(queryVector);
+    if (vectorError) {
+      return json({ error: vectorError }, 500);
+    }
 
     // 2. Similarity search in Postgres (pgvector cosine distance)
     //    Fetch more candidates than needed for better product grouping
