@@ -226,6 +226,8 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: CORS_HEADERS });
   }
 
+  const startTime = Date.now();
+
   try {
     const { image } = (await req.json()) as MatchRequest;
 
@@ -237,12 +239,15 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'The submitted photo is too large.' }, 413);
     }
 
+    console.log(`[visual-match] Processing image (${(image.length / 1024).toFixed(0)} KB data URI)`);
+
     // 1. Embed the user photo using MobileCLIP-S0 (FREE, no API keys)
     const provider = getEmbeddingProvider();
-    const { vectors } = await provider.embedImages([image]);
+    const { vectors, model, dimensions } = await provider.embedImages([image]);
 
     // Validate the embedding result before using it
     if (!vectors || !Array.isArray(vectors) || vectors.length === 0) {
+      console.error('[visual-match] Embedding generation returned no vectors');
       return json({ error: 'Embedding generation returned no vectors.' }, 500);
     }
 
@@ -250,8 +255,11 @@ Deno.serve(async (req: Request) => {
 
     const vectorError = validateEmbeddingVector(queryVector);
     if (vectorError) {
+      console.error(`[visual-match] Embedding validation failed: ${vectorError}`);
       return json({ error: vectorError }, 500);
     }
+
+    console.log(`[visual-match] Embedding generated: model=${model} dims=${dimensions} len=${queryVector.length} (${Date.now() - startTime}ms)`);
 
     // 2. Similarity search in Postgres (pgvector cosine distance)
     //    Fetch more candidates than needed for better product grouping
@@ -268,16 +276,21 @@ Deno.serve(async (req: Request) => {
     });
 
     if (error) {
+      console.error(`[visual-match] RPC error: ${error.message} (code=${error.code})`);
       return json({ error: `Similarity search failed: ${error.message}` }, 500);
     }
 
     const rows = (data ?? []) as { product_id: string; image_id: string; similarity: number }[];
+
+    console.log(`[visual-match] RPC returned ${rows.length} image-level candidates (${Date.now() - startTime}ms total)`);
 
     // 3. Group by product and calculate product-level scores
     const productResults = groupByProduct(rows);
 
     // 4. Determine main match and similar products
     const { status, confidence, main_match, similar_products } = determineMatch(productResults);
+
+    console.log(`[visual-match] Result: status=${status} confidence=${confidence.toFixed(3)} products=${productResults.length} main=${main_match?.product_id ?? 'none'}`);
 
     // 5. Build response
     const response: MatchResponse = {
@@ -295,6 +308,7 @@ Deno.serve(async (req: Request) => {
 
     return json(response, 200);
   } catch (error) {
+    console.error(`[visual-match] Unhandled error: ${error instanceof Error ? error.message : error}`);
     return json(
       { error: error instanceof Error ? error.message : 'Visual matching failed.' },
       500,
