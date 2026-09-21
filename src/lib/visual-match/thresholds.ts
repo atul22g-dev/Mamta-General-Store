@@ -87,14 +87,8 @@ export const MAX_SIMILAR_PRODUCTS = 10;
 export const EDGE_CANDIDATE_LIMIT = 20;
 
 // ---------------------------------------------------------------------------
-// Legacy compatibility (used by existing code that references old names)
+// Timeout and size limits
 // ---------------------------------------------------------------------------
-
-/** @deprecated Use MAIN_MATCH_THRESHOLD instead. */
-export const VISUAL_MATCH_THRESHOLD = MAIN_MATCH_THRESHOLD;
-
-/** @deprecated Use AMBIGUOUS_MARGIN instead. */
-export const VISUAL_MATCH_AMBIGUOUS_MARGIN = AMBIGUOUS_MARGIN;
 
 /**
  * Hard timeout for the end-to-end match (embed API + vector search +

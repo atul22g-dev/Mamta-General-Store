@@ -3,7 +3,8 @@
  *
  * Flow (the AI NEVER touches prices):
  *   user photo (base64 data URI)
- *     → MobileCLIP-S0 embedding (free, ONNX, 512-dim)
+ *     → MobileCLIP-S0 embedding (free, ONNX, 512-dim float32)
+ *     → validate embedding dimensions + finite values
  *     → pgvector cosine similarity over product_images.embedding
  *     → group results by product (best score per product)
  *     → determine main match (above MAIN_MATCH_THRESHOLD)
@@ -19,7 +20,7 @@
  *   - AMBIGUOUS_MARGIN (default: 0.03)
  *   - EDGE_CANDIDATE_LIMIT (default: 20)
  */
-import { getEmbeddingProvider } from '../_shared/embedding.ts';
+import { getEmbeddingProvider, EMBEDDING_DIMENSIONS, validateEmbeddingVector } from '../_shared/embedding.ts';
 
 // ---------------------------------------------------------------------------
 // Configuration from environment secrets
@@ -49,7 +50,7 @@ const CORS_HEADERS = {
 // ---------------------------------------------------------------------------
 
 interface MatchRequest {
-  /** The user's captured photo as a data URI (image/jpeg|png|webp). */
+  /** The user's captured photo as a data URI (image/jpeg|png). */
   image: string;
 }
 
@@ -225,30 +226,62 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: CORS_HEADERS });
   }
 
+  const startTime = Date.now();
+
   try {
+    // --- AuthZ: caller must have a valid Supabase session (anon or authenticated) ---
+    // This prevents unauthenticated abuse while still allowing shop-floor scans.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return json({ error: 'Authentication required.' }, 401);
+    }
+
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+
+    const { error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      return json({ error: 'Invalid or expired session.' }, 401);
+    }
+
     const { image } = (await req.json()) as MatchRequest;
 
     // Validate input
     if (!image || typeof image !== 'string' || !ALLOWED_IMAGE_MIME.test(image)) {
-      return json({ error: 'A data-URI product photo is required (png/jpeg/webp).' }, 400);
+      return json({ error: 'A data-URI product photo is required (png/jpeg).' }, 400);
     }
     if (image.length > MAX_DATA_URI_CHARS) {
       return json({ error: 'The submitted photo is too large.' }, 413);
     }
 
+    console.log(`[visual-match] Processing image (${(image.length / 1024).toFixed(0)} KB data URI)`);
+
     // 1. Embed the user photo using MobileCLIP-S0 (FREE, no API keys)
     const provider = getEmbeddingProvider();
-    const { vectors } = await provider.embedImages([image]);
+    const { vectors, model, dimensions } = await provider.embedImages([image]);
+
+    // Validate the embedding result before using it
+    if (!vectors || !Array.isArray(vectors) || vectors.length === 0) {
+      console.error('[visual-match] Embedding generation returned no vectors');
+      return json({ error: 'Embedding generation returned no vectors.' }, 500);
+    }
+
     const queryVector = vectors[0];
+
+    const vectorError = validateEmbeddingVector(queryVector);
+    if (vectorError) {
+      console.error(`[visual-match] Embedding validation failed: ${vectorError}`);
+      return json({ error: vectorError }, 500);
+    }
+
+    console.log(`[visual-match] Embedding generated: model=${model} dims=${dimensions} len=${queryVector.length} (${Date.now() - startTime}ms)`);
 
     // 2. Similarity search in Postgres (pgvector cosine distance)
     //    Fetch more candidates than needed for better product grouping
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-    );
-
     const { data, error } = await supabase.rpc('visual_search_matches', {
       query_embedding: queryVector,
       match_threshold: SIMILAR_PRODUCT_THRESHOLD, // Lower threshold to get more candidates
@@ -256,16 +289,21 @@ Deno.serve(async (req: Request) => {
     });
 
     if (error) {
-      return json({ error: `Similarity search failed: ${error.message}` }, 500);
+      console.error(`[visual-match] RPC error: ${error.message} (code=${error.code})`);
+      return json({ error: 'Similarity search failed. Please try again.' }, 500);
     }
 
     const rows = (data ?? []) as { product_id: string; image_id: string; similarity: number }[];
+
+    console.log(`[visual-match] RPC returned ${rows.length} image-level candidates (${Date.now() - startTime}ms total)`);
 
     // 3. Group by product and calculate product-level scores
     const productResults = groupByProduct(rows);
 
     // 4. Determine main match and similar products
     const { status, confidence, main_match, similar_products } = determineMatch(productResults);
+
+    console.log(`[visual-match] Result: status=${status} confidence=${confidence.toFixed(3)} products=${productResults.length} main=${main_match?.product_id ?? 'none'}`);
 
     // 5. Build response
     const response: MatchResponse = {
@@ -283,8 +321,9 @@ Deno.serve(async (req: Request) => {
 
     return json(response, 200);
   } catch (error) {
+    console.error(`[visual-match] Unhandled error: ${error instanceof Error ? error.message : error}`);
     return json(
-      { error: error instanceof Error ? error.message : 'Visual matching failed.' },
+      { error: 'Visual matching failed. Please try again.' },
       500,
     );
   }

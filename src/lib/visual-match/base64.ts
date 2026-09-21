@@ -35,24 +35,54 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /** MIME types the matcher accepts; anything else is sent as JPEG (camera captures). */
-const KNOWN_IMAGE_MIME = /^(image\/(png|webp))(;|$)/i;
+const KNOWN_IMAGE_MIME = /^(image\/png)(;|$)/i;
 
-/** Reads a local file URI and returns it as a data URI (native + web). */
+/**
+ * Reads a local file URI and returns it as a data URI (native + web).
+ *
+ * Validates file existence before reading. Detects MIME type from the
+ * file URI extension (not from a URL parameter, which is unreliable).
+ * WebP is NOT supported by MobileCLIP-S0 (no decoder in Deno edge function).
+ */
 export async function fileUriToDataUri(
   fileUri: string,
   mimeType = 'image/jpeg',
 ): Promise<string> {
   const { File } = await import('expo-file-system');
   const file = new File(fileUri);
+
+  if (!file.exists) {
+    throw new Error('The captured image is no longer available. Try again.');
+  }
+
   const buffer = await file.arrayBuffer();
-  const base64 = bytesToBase64(new Uint8Array(buffer));
-  // The picker can hand over PNG/WebP sources; labeling those bytes as
-  // image/jpeg corrupts providers that trust the declared MIME. Web picker
-  // URIs carry their type in a blob URL fragment — prefer it when present.
-  const detected = /(?:^|[&;])type=image\/(png|webp)(?:[&;]|$)/i.exec(fileUri);
-  const resolved =
-    detected && KNOWN_IMAGE_MIME.test(`image/${detected[1]};`)
-      ? `image/${detected[1].toLowerCase()}`
-      : mimeType;
+  const bytes = new Uint8Array(buffer);
+
+  if (bytes.length === 0) {
+    throw new Error('The image file is empty. Try capturing a new photo.');
+  }
+
+  const base64 = bytesToBase64(bytes);
+
+  // Detect MIME from file extension (more reliable than URL parameters).
+  const ext = fileUri.split('.').pop()?.toLowerCase();
+  let resolved = mimeType;
+  if (ext === 'png') {
+    resolved = 'image/png';
+  } else if (ext === 'jpg' || ext === 'jpeg' || ext === 'heic' || ext === 'heif') {
+    resolved = 'image/jpeg'; // HEIC/HEIF are transcoded by expo-image-picker
+  }
+
+  // WebP is NOT supported — fall back to JPEG (will fail at edge function
+  // with a clear error, rather than silently corrupting the payload).
+  if (ext === 'webp') {
+    resolved = 'image/jpeg';
+  }
+
+  // Final validation: only JPEG and PNG are accepted end-to-end.
+  if (!KNOWN_IMAGE_MIME.test(`${resolved};`) && resolved !== 'image/jpeg') {
+    resolved = 'image/jpeg';
+  }
+
   return `data:${resolved};base64,${base64}`;
 }

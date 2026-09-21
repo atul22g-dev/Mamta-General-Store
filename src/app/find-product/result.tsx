@@ -33,6 +33,7 @@ import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation
 import type { MatchCandidateView } from '@/lib/visual-match/client';
 import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
 import { matchSession } from '@/lib/visual-match/session';
+import { MAX_SIMILAR_PRODUCTS } from '@/lib/visual-match/thresholds';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,13 +47,21 @@ function unitLabel(unit: string): string {
   return UNIT_LABELS[unit as ProductUnit] ?? unit;
 }
 
+function toNum(v: unknown): number {
+  return typeof v === 'string' ? Number(v) : (v as number);
+}
+
 function hasDiscount(product: ProductWithImages): boolean {
-  return product.mrp !== product.selling_price && product.mrp > product.selling_price;
+  const mrp = toNum(product.mrp);
+  const sp = toNum(product.selling_price);
+  return mrp !== sp && mrp > sp;
 }
 
 function savePercent(product: ProductWithImages): number {
-  if (!hasDiscount(product) || product.mrp <= 0) return 0;
-  return Math.round(((product.mrp - product.selling_price) / product.mrp) * 100);
+  const mrp = toNum(product.mrp);
+  const sp = toNum(product.selling_price);
+  if (!hasDiscount(product) || mrp <= 0) return 0;
+  return Math.round(((mrp - sp) / mrp) * 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +287,7 @@ function SimilarProductsSection({
         {products.length} {products.length === 1 ? 'product' : 'products'} found
       </ThemedText>
       <View style={styles.similarList}>
-        {products.slice(0, 10).map((candidate) => (
+        {products.slice(0, MAX_SIMILAR_PRODUCTS).map((candidate) => (
           <SimilarProductCard
             key={candidate.product.id}
             candidate={candidate}
@@ -315,7 +324,9 @@ export default function FindProductResultScreen() {
         ? { product: outcome.main_match.product, similarity: outcome.main_match.similarity }
         : null;
 
-  const similarProducts = outcome?.similar_products ?? [];
+  const similarProducts = (outcome?.similar_products ?? []).filter(
+    (c) => c.product.id !== mainProduct?.product.id,
+  );
   const hasSimilar = similarProducts.length > 0;
 
   // Handlers

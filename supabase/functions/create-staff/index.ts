@@ -115,14 +115,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (grantError || !grantedRows || grantedRows.length === 0) {
       // The auth user exists but the profile row is missing (or the grant
       // failed) — report honestly so the admin can fix it via SQL rather
-      // than silently pretending. The repair SQL below also recreates a
-      // missing profile, not just the role.
+      // than silently pretending. Do NOT expose SQL to the client.
+      console.error(
+        `[create-staff] Role grant failed for user ${created.user.id}: ` +
+          `${grantError?.message ?? 'no profile row'}`,
+      );
       return json(
         {
           error:
-            'Account created, but granting the staff role failed. Grant it with: ' +
-            `insert into public.profiles (id, email, role) values ('${created.user.id}', '${email}', 'staff') ` +
-            `on conflict (id) do update set role = 'staff';`,
+            'Account created, but granting the staff role failed. ' +
+            'Check the server logs and grant the role manually via SQL or the Dashboard.',
         },
         207,
       );

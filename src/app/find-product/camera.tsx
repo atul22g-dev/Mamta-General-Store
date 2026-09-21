@@ -14,6 +14,7 @@ import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useGalleryPick } from '@/hooks/use-gallery-pick';
 import { scanSession } from '@/lib/scan-session';
+import { validateImageFile } from '@/lib/image-pipeline';
 
 type Phase = 'checking' | 'undetermined' | 'denied' | 'ready';
 
@@ -285,6 +286,14 @@ export default function FindProductCameraScreen() {
       return;
     }
 
+    // Validate the captured image (file exists, size OK, format supported).
+    const validation = await validateImageFile(photo.uri);
+    if (!validation.ok) {
+      setCaptureError(validation.errorMessage);
+      setCapturing(false);
+      return;
+    }
+
     // Hand the single photo to the next step via the in-memory session
     // (route params would serialize the URI into history).
     scanSession.setShot(photo.uri);
@@ -450,9 +459,6 @@ const styles = StyleSheet.create({
   },
   galleryBusy: {
     opacity: 0.5,
-  },
-  modeLabel: {
-    color: 'rgba(255,255,255,0.85)',
   },
   shutterOuter: {
     width: 78,

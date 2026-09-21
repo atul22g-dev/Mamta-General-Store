@@ -14,7 +14,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { scanSession } from '@/lib/scan-session';
 import { matchSession } from '@/lib/visual-match/session';
 import { matchProductFromPhoto } from '@/lib/visual-match/client';
-import { fileUriToDataUri } from '@/lib/visual-match/base64';
+import { validateAndConvert } from '@/lib/image-pipeline';
 
 /** The visible stages of a match run, in order. */
 const STAGES = [
@@ -125,11 +125,21 @@ export default function FindProductSearchingScreen() {
 
     const isStale = () => runId !== runIdRef.current;
 
-    // Data-URI conversion (HIGH-03 partial fix: MIME from the file, not a
-    // hardcoded image/jpeg — web picks may be PNG; see audit).
+    // Validate + convert the captured photo to a data URI for the embedding
+    // engine. validateAndConvert checks file existence, size, and MIME type
+    // before reading bytes, so errors are specific and actionable.
     let dataUri: string;
     try {
-      dataUri = await fileUriToDataUri(shot.uri);
+      const conversion = await validateAndConvert(shot.uri);
+      if (!conversion.ok) {
+        if (!isStale()) {
+          setPhase('error');
+          setErrorMessage(conversion.errorMessage);
+        }
+        inFlightRef.current = false;
+        return;
+      }
+      dataUri = conversion.dataUri;
     } catch {
       if (!isStale()) {
         setPhase('error');

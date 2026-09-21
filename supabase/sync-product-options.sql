@@ -1,15 +1,13 @@
 -- ============================================================================
--- SYNC PRODUCT OPTIONS — run in Supabase Dashboard → SQL Editor → Run
+-- ⚠️  DEPRECATED — DO NOT RUN ON PRODUCTION ⚠️
 -- ============================================================================
--- Keeps the DATABASE enums in sync with the app's editable config
--- (src/config/products.ts), which now declares:
+-- This script DESTRUCTIVELY drops and recreates enum types, which will:
+--   - DESTROY the boots/toys/cloths categories added by migration 0010
+--   - DESTROY any products using those categories
+--   - Drop and recreate FK constraints (may fail with existing rows)
 --
---   categories : household, personal_care, other
---   units      : piece, Meter
---
--- Safe to run any number of time (IF NOT EXISTS guards). The catalog is
--- currently empty, so no row migration is needed; the guarded UPDATEs would
--- migrate old rows if any existed.
+-- Use the migration chain instead: npm run db:deploy
+-- This file is kept for historical reference only.
 -- ============================================================================
 
 -- 1. Make sure the new unit exists -------------------------------------------------

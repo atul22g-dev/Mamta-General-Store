@@ -173,9 +173,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.one,
   },
-  errorPanel: {
-    alignSelf: 'stretch',
-  },
   actions: {
     gap: Spacing.two,
     marginTop: Spacing.two,

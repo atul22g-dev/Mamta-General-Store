@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { alert } from '@/lib/alert';
 import { scanSession } from '@/lib/scan-session';
+import { validateImageFile } from '@/lib/image-pipeline';
 
 /**
  * Shared "pick one photo from the gallery and hand it to the scan flow"
@@ -14,7 +15,7 @@ import { scanSession } from '@/lib/scan-session';
  * out of automatic memoization. The busy flag is instead mirrored on every
  * exit path — same guarantee, compiler-friendly shape.
  *
- * Pipeline (single matching path): scanSession.setShot(uri) → /preview.
+ * Pipeline (single matching path): validate → scanSession.setShot(uri) → /preview.
  */
 export function useGalleryPick() {
   const router = useRouter();
@@ -61,6 +62,14 @@ export function useGalleryPick() {
     }
 
     if (!uri) {
+      setPicking(false);
+      return;
+    }
+
+    // Validate the picked image before proceeding (file exists, size OK).
+    const validation = await validateImageFile(uri);
+    if (!validation.ok) {
+      alert('Invalid image', validation.errorMessage);
       setPicking(false);
       return;
     }

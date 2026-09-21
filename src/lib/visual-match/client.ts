@@ -23,17 +23,11 @@ import {
   VISUAL_MATCH_TIMEOUT_MS,
   VISUAL_MATCH_MAX_IMAGE_BYTES,
 } from '@/lib/visual-match/thresholds';
-import type { ServiceResult } from '@/lib/visual-match/types';
+import { isValidEmbeddingDataUri } from '@/lib/image-pipeline';
 
 export type { MatchCandidateView, VisualMatchOutcome };
 
-/** Validated data URI (size + MIME) before any network round-trip. */
-function isValidDataUri(dataUri: string): boolean {
-  if (dataUri.length > VISUAL_MATCH_MAX_IMAGE_BYTES) return false;
-  // WebP is NOT supported by the MobileCLIP-S0 embedding engine (no decoder).
-  // Only JPEG and PNG are accepted end-to-end.
-  return /^data:image\/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$/.test(dataUri);
-}
+type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 /**
  * Combines the caller's abort signal with a hard timeout. The timeout is
@@ -111,7 +105,7 @@ export async function matchProductFromPhoto(
   dataUri: string,
   signal?: AbortSignal,
 ): Promise<ServiceResult<VisualMatchOutcome>> {
-  if (!isValidDataUri(dataUri)) {
+  if (!isValidEmbeddingDataUri(dataUri)) {
     return {
       ok: false,
       error:
@@ -164,6 +158,12 @@ export async function matchProductFromPhoto(
     // 3. Fetch CURRENT product data (price included) from Supabase — the AI
     //    never supplies any of this.
     const products = await fetchProducts(allProductIds);
+
+    // Log missing products for development debugging (deleted/deactivated between RPC and fetch)
+    if (products.size < allProductIds.length) {
+      const missing = allProductIds.filter((id) => !products.has(id));
+      console.warn(`[visual-match] ${missing.length} product(s) not found in DB: ${missing.join(', ')}`);
+    }
 
     // 4. Build main_match view (if exists AND product was found in DB)
     let mainMatch: MatchCandidateView | null = null;
