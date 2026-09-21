@@ -33,6 +33,7 @@ import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation
 import type { MatchCandidateView } from '@/lib/visual-match/client';
 import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
 import { matchSession } from '@/lib/visual-match/session';
+import { MAX_SIMILAR_PRODUCTS } from '@/lib/visual-match/thresholds';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -278,7 +279,7 @@ function SimilarProductsSection({
         {products.length} {products.length === 1 ? 'product' : 'products'} found
       </ThemedText>
       <View style={styles.similarList}>
-        {products.slice(0, 10).map((candidate) => (
+        {products.slice(0, MAX_SIMILAR_PRODUCTS).map((candidate) => (
           <SimilarProductCard
             key={candidate.product.id}
             candidate={candidate}
@@ -315,7 +316,9 @@ export default function FindProductResultScreen() {
         ? { product: outcome.main_match.product, similarity: outcome.main_match.similarity }
         : null;
 
-  const similarProducts = outcome?.similar_products ?? [];
+  const similarProducts = (outcome?.similar_products ?? []).filter(
+    (c) => c.product.id !== mainProduct?.product.id,
+  );
   const hasSimilar = similarProducts.length > 0;
 
   // Handlers

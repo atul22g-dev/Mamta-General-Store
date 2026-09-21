@@ -158,6 +158,12 @@ export async function matchProductFromPhoto(
     //    never supplies any of this.
     const products = await fetchProducts(allProductIds);
 
+    // Log missing products for development debugging (deleted/deactivated between RPC and fetch)
+    if (products.size < allProductIds.length) {
+      const missing = allProductIds.filter((id) => !products.has(id));
+      console.warn(`[visual-match] ${missing.length} product(s) not found in DB: ${missing.join(', ')}`);
+    }
+
     // 4. Build main_match view (if exists AND product was found in DB)
     let mainMatch: MatchCandidateView | null = null;
     if (response.main_match) {
