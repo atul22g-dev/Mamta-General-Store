@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 
 import { Icon } from '@/components/ui/icon';
 import { IconButton } from '@/components/ui/icon-button';
@@ -54,7 +54,6 @@ function shouldRedirectToLogin(
   if (status === 'loading') return false;
   return status !== 'authenticated' || !isAdmin;
 }
-
 /**
  * Add Staff — admin-only account provisioning.
  *
@@ -84,10 +83,12 @@ export default function AddStaffScreen() {
   const canSubmit = emailIsValid && passwordIsStrong && passwordsMatch && !submitting;
 
   // The protected layout already guards this route, but this early-out keeps
-  // deep-link behavior honest if the guard ever changes.
+  // deep-link behavior honest if the guard ever changes. <Redirect> performs
+  // the navigation in an effect — calling router.replace() during render
+  // would update the navigator DURING render (web hard-crashes on it), the
+  // exact pattern login.tsx documents and avoids.
   if (shouldRedirectToLogin(status, isAdmin)) {
-    router.replace('/admin/login');
-    return null;
+    return <Redirect href="/admin/login" />;
   }
 
   const handleCreate = async () => {

@@ -16,13 +16,15 @@ export function toSignInError(message: string): string {
   // columns (confirmation_token etc.) or a malformed password hash, instead
   // of being created via the dashboard or the admin API. The fix is running
   // supabase/create-admin-user.sql, the idempotent create-or-repair tool,
-  // not retrying.
+  // not retrying. Matched on SPECIFIC GoTrue phrases only — a bare
+  // `includes('500')` over-matched unrelated failures (rate-limit payloads,
+  // metadata, ids containing "500") into this repair path.
   if (
     m.includes('internal server error') ||
-    m.includes('unexpected') ||
     m.includes('database error') ||
     m.includes('error:500') ||
-    m.includes('500')
+    m.includes('database error querying schema') ||
+    m.includes('error reading user')
   )
     return 'Server error while signing in — this account\'s database row needs repair. Run supabase/create-admin-user.sql in the SQL Editor (see README), or delete and re-create the user in Dashboard → Authentication → Users.';
   if (m.includes('network') || m.includes('fetch')) return 'Network error — check your connection.';
