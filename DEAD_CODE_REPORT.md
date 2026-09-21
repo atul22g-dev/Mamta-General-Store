@@ -32,6 +32,56 @@ followed by re-running `npx tsc --noEmit`, `npm run lint`, and all four node tes
   `node tests/visual-match.test.mjs` 18/18 · `image-pipeline` 23/23 · `search-embedding` 28/28 ·
   `embedding-generation` 14/14.
 
+---
+
+# PASS 2 — full sweep: unused files, dependencies, config drift
+
+Second pass after the Find Product fix: every tracked file, every dependency, and every
+npm-script/doc reference re-verified with the same reference-analysis method.
+
+## Dependencies removed (package.json 31 → 26 deps, lockfile pruned via npm uninstall)
+
+| Package | Evidence | Verdict |
+|---|---|---|
+| `expo-application` | 0 imports in src/tests/scripts/config; 0 installed packages depend on it; not an SDK peer | REMOVED |
+| `expo-device` | same checks | REMOVED |
+| `expo-status-bar` | same checks; no `StatusBar` component anywhere in src | REMOVED |
+| `expo-system-ui` | same checks; 0 transitive users | REMOVED |
+| `expo-web-browser` | same checks | REMOVED |
+
+**Explicitly kept after verification (looked unused but are not):**
+- `expo-glass-effect`, `expo-symbols` — direct **dependencies of expo-router** (its package.json).
+- `expo-font` — peer of `@expo/vector-icons`.
+- `react-native-worklets` — imported by `animated-icon.tsx` AND the reanimated-4 worklet runtime.
+- `expo-linking`, `react-dom`, `react-native-web`, `expo-splash-screen`, `expo-constants`,
+  `expo-sqlite`, `@react-native-async-storage/async-storage` — all directly imported
+  (router/peer/web platform split/session storage) or SDK peers of installed packages.
+- `expo-doctor` 21/21 checks passed after removal — SDK version contract intact.
+
+## Files removed / moved
+
+| Candidate | Evidence | Verdict |
+|---|---|---|
+| 11 root-level historical reports (`BUG_AUDIT.md`, `DATABASE_FIXES.md`, `EMBEDDING_FIXES.md`, `FIND_PRODUCT_IMAGE_FIXES.md`, `FIND_PRODUCT_UI_FIXES.md`, `MATCH_RESULT_FIXES.md`, `PRICE_DISPLAY_FIXES.md`, `RPC_FIXES.md`, `SEARCH_EMBEDDING_FIXES.md`, `SECURITY_AUDIT.md`, `FINAL_BUG_REPORT.md`) | zero references from code/config/README; superseded by the current AUDIT/ROOT-CAUSE/DATABASE_FIX/TEST/FINAL reports; kept out of the repo root | MOVED to `docs/archive/` (history preserved, not deleted) |
+| `.claude/settings.json` (tracked) | tool-personal config; zero references anywhere in the repo | DELETED |
+| `.expo-fulltest/`, `.freebuff/`, `.vscode/`, `.github/`, `assets/*`, `expo-env.d.ts` | tool/CI/IDE/build artifacts; assets referenced by app.json | KEEP |
+| `src/hooks/use-responsive.ts`, `src/constants/motion.ts`, `src/components/animated-icon(.web).tsx` + `.module.css`, `src/types/css.d.ts`, `src/config/products.ts` | re-checked with import-graph sweep — ALL referenced (home/admin screens, splash overlay, `@/global.css` typing, form config) | KEEP |
+| `supabase/sync-product-options.sql`, `supabase/fix-product-images.sql` | still UNCERTAIN per pass 1 (deprecated-but-documented Dashboard tools) | KEEP |
+
+## Config drift fixed (optimization)
+
+- README documented `npm run deploy:functions` / `npm run deploy:probe` — **these scripts never
+  existed in any commit**. Replaced with the real command (`npm run db:deploy [-- --check]`) plus
+  the schema-repair note, so onboarding instructions match reality.
+- `client.ts` re-exported `analyzeMatchOutcome` while the only consumer imports it directly from
+  `decision.ts` — redundant re-export removed.
+
+## Final verification (after all pass-2 changes)
+
+`npx tsc --noEmit` → 0 errors · `npm run lint` → clean · 83/83 unit tests ·
+`npx expo-doctor` → **21/21 checks passed** · working tree clean, changes in
+`cleanup: remove unused files, dependencies, and doc drift`.
+
 ## Rollback
 
 The deletion is a single file removal captured in its own commit

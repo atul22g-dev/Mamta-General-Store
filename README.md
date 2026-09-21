@@ -60,13 +60,17 @@ CLI alternative for production schema changes: `npx supabase link --project-ref 
 
 Then sign in at `/admin/login`. More users (staff/admin)? See [`supabase/create-user.sql`](supabase/create-user.sql) or use **Add Staff** in the app.
 
-### 5. Deploy the staff-provisioning function
+### 5. Deploy the backend (schema + all Edge Functions)
 
-One command does init → login → link → deploy → live-verify:
+One command does init → login → link → migrate → deploy → live-verify:
 
 ```bash
-npm run deploy:functions     # probe-only check: npm run deploy:probe
+npm run db:deploy            # status check only: npm run db:deploy -- --check
 ```
+
+> On a database that already has objects but a missing migration history, first run the
+> idempotent [`supabase/fix-visual-search-schema.sql`](supabase/fix-visual-search-schema.sql)
+> in Dashboard → SQL Editor (non-destructive), then `npm run db:deploy`.
 
 ---
 
@@ -79,7 +83,7 @@ The app self-diagnoses: **Settings → Store database → tap the row** shows li
 | `PGRST002` | API can't reach its database | Self-hosted: `docker compose up -d`; hosted: check project health |
 | `PGRST205` | Database reachable but **schema empty** | Run `setup-all-in-one.sql` (step 3) |
 | Login: `500 Database error querying schema` | Admin's auth row is malformed (NULL tokens / missing identity) | Run [`create-admin-user.sql`](supabase/create-admin-user.sql) (edit its two `▼ EDIT ME` values) |
-| Add Staff: "account service is not deployed" | `create-staff` function missing | `npm run deploy:functions` (step 5) |
+| Add Staff: "account service is not deployed" | `create-staff` function missing | `npm run db:deploy` (step 5) |
 | Add Staff: "email already exists" | Duplicate signup | Different email, or manage in Dashboard → Authentication |
 | "Access denied" after login | Profile has no `admin`/`staff` role | Run the step-4 promotion SQL |
 
