@@ -14,7 +14,6 @@ register(pathToFileURL(path.join(ROOT, 'tests', 'alias-loader.mjs')).href);
 
 const {
   detectMimeTypeFromUri,
-  detectMimeTypeFromDataUri,
   isValidEmbeddingDataUri,
   SUPPORTED_MIME_TYPES,
   MAX_IMAGE_BYTES,
@@ -82,27 +81,6 @@ test('Path with directories → extracts last extension', () => {
 test('Case insensitive extension', () => {
   assert.equal(detectMimeTypeFromUri('photo.JPG'), 'image/jpeg');
   assert.equal(detectMimeTypeFromUri('photo.Png'), 'image/png');
-});
-
-// ---------------------------------------------------------------------------
-// detectMimeTypeFromDataUri
-// ---------------------------------------------------------------------------
-console.log('\ndetectMimeTypeFromDataUri');
-
-test('JPEG data URI → image/jpeg', () => {
-  assert.equal(detectMimeTypeFromDataUri('data:image/jpeg;base64,/9j/4AAQ...'), 'image/jpeg');
-});
-
-test('PNG data URI → image/png', () => {
-  assert.equal(detectMimeTypeFromDataUri('data:image/png;base64,iVBOR...'), 'image/png');
-});
-
-test('Invalid data URI → null', () => {
-  assert.equal(detectMimeTypeFromDataUri('not a data uri'), null);
-});
-
-test('Empty string → null', () => {
-  assert.equal(detectMimeTypeFromDataUri(''), null);
 });
 
 // ---------------------------------------------------------------------------

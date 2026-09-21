@@ -46,7 +46,6 @@ export function isNetworkError(error: unknown): boolean {
 }
 
 const NETWORK_MESSAGE = 'No internet connection. Check your network and try again.';
-const SERVER_MESSAGE = 'Store service is unavailable right now. Try again in a moment.';
 
 /**
  * Maps any thrown/returned error to a short user-facing message.
@@ -83,4 +82,4 @@ export function toUserMessage(error: unknown, fallback = 'Something went wrong.'
   return fallback;
 }
 
-export { NETWORK_MESSAGE, SERVER_MESSAGE };
+export { NETWORK_MESSAGE };

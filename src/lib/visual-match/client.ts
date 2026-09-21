@@ -23,10 +23,11 @@ import {
   VISUAL_MATCH_TIMEOUT_MS,
   VISUAL_MATCH_MAX_IMAGE_BYTES,
 } from '@/lib/visual-match/thresholds';
-import type { ServiceResult } from '@/lib/visual-match/types';
 import { isValidEmbeddingDataUri } from '@/lib/image-pipeline';
 
 export type { MatchCandidateView, VisualMatchOutcome };
+
+type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 /**
  * Combines the caller's abort signal with a hard timeout. The timeout is

@@ -100,14 +100,6 @@ export function detectMimeTypeFromUri(uri: string): string {
 }
 
 /**
- * Detects MIME type from a data URI prefix.
- */
-export function detectMimeTypeFromDataUri(dataUri: string): string | null {
-  const match = dataUri.match(/^data:(image\/\w+);/);
-  return match?.[1] ?? null;
-}
-
-/**
  * Full pipeline: validate → read → convert to data URI.
  *
  * 1. Validates file existence and size

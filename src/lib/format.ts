@@ -20,11 +20,6 @@ export function formatPrice(value: number): string {
   })}`;
 }
 
-/** Formats a unit label from the DB enum, falling back to the raw value. */
-export function formatUnit(unit: string, labels: Record<string, string>): string {
-  return labels[unit] ?? unit;
-}
-
 /**
  * Measured units whose price is quoted PER unit in retail
  * (wire, fabric, pipe, rope…). Products with these units display

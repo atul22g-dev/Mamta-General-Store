@@ -460,9 +460,6 @@ const styles = StyleSheet.create({
   galleryBusy: {
     opacity: 0.5,
   },
-  modeLabel: {
-    color: 'rgba(255,255,255,0.85)',
-  },
   shutterOuter: {
     width: 78,
     height: 78,
