@@ -1,7 +1,20 @@
+/**
+ * Find Product Result Screen
+ *
+ * Modern, clean, mobile-first design for displaying visual search results.
+ * Shows the matched product with all database information, similar products,
+ * and handles all error/loading states gracefully.
+ *
+ * Design principles:
+ * - Simple and easy for shop customers to understand
+ * - Fast loading with proper image placeholders
+ * - No technical vector data shown to users
+ * - All prices from database (AI never invents prices)
+ */
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -17,10 +30,13 @@ import { formatPrice, formatPriceWithUnit } from '@/lib/format';
 import { getProductImageUrl } from '@/lib/products/get-product-image-url';
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { UNIT_LABELS, type ProductUnit } from '@/lib/products/product-validation';
-import { stockLabel as sharedStockLabel, stockTone } from '@/lib/stock';
-import type { MatchCandidateView, VisualMatchOutcome } from '@/lib/visual-match/client';
+import type { MatchCandidateView } from '@/lib/visual-match/client';
 import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
 import { matchSession } from '@/lib/visual-match/session';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function confidencePercent(similarity: number): string {
   return `${Math.round(similarity * 100)}%`;
@@ -30,269 +46,134 @@ function unitLabel(unit: string): string {
   return UNIT_LABELS[unit as ProductUnit] ?? unit;
 }
 
-/** What the match card renders: a product plus an optional known similarity. */
-type ShownProduct = {
-  product: ProductWithImages;
-  /** null for manual picks — the flow never invents a score. */
-  similarity: number | null;
-};
-
-/** Labeled stat tile (Stock / Match) used under the price hero.
- *  Tone tints the whole tile so stock state reads at a glance. */
-function StatTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'success' | 'warning' | 'error';
-}) {
-  const theme = useTheme();
-
-  const color =
-    tone === 'success'
-      ? theme.success
-      : tone === 'warning'
-        ? theme.warning
-        : tone === 'error'
-          ? theme.error
-          : theme.text;
-
-  const bg =
-    tone === 'success'
-      ? theme.successSoft
-      : tone === 'warning'
-        ? theme.warningSoft
-        : tone === 'error'
-          ? theme.errorSoft
-          : theme.surfaceSecondary;
-
-  return (
-    <View style={[styles.statTile, { backgroundColor: bg, borderColor: color + '33' }]}>
-      <ThemedText type="overline" themeColor="textTertiary">
-        {label}
-      </ThemedText>
-      <ThemedText type="h3" style={{ color }}>
-        {value}
-      </ThemedText>
-    </View>
-  );
-}
-
-/** True when the MRP is a genuine discount over the selling price. */
 function hasDiscount(product: ProductWithImages): boolean {
   return product.mrp !== product.selling_price && product.mrp > product.selling_price;
 }
 
-/** Rounded whole-percent saving of a discounted product (0 when none). */
 function savePercent(product: ProductWithImages): number {
   if (!hasDiscount(product) || product.mrp <= 0) return 0;
   return Math.round(((product.mrp - product.selling_price) / product.mrp) * 100);
 }
 
-/** Tone banner above the card: the match outcome at a glance. */
-function MatchBanner({
-  icon,
-  title,
-  tone,
-  similarity,
+// ---------------------------------------------------------------------------
+// Image with loading state
+// ---------------------------------------------------------------------------
+
+function ProductImage({
+  uri,
+  name,
+  size = 120,
+  style,
 }: {
-  icon: 'checkmark-circle' | 'person';
-  title: string;
-  tone: 'success' | 'warning';
-  similarity: number | null;
+  uri: string | null;
+  name: string;
+  size?: number;
+  style?: object;
 }) {
   const theme = useTheme();
-  const color = tone === 'success' ? theme.success : theme.warning;
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
 
-  return (
-    <Animated.View
-      entering={FadeInDown.duration(280)}
-      style={[styles.matchBanner, { backgroundColor: tone === 'success' ? theme.successSoft : theme.warningSoft }]}>
-      <View style={[styles.matchBannerIcon, { backgroundColor: color }]}>
-        <Icon name={icon} size={18} color={theme.white} />
-      </View>
-      <ThemedText type="body" style={{ color }}>
-        {title}
-      </ThemedText>
-      {similarity !== null && (
-        <ThemedText type="smallBold" style={{ color, marginLeft: 'auto' }}>
-          {confidencePercent(similarity)} match
+  if (!uri || error) {
+    return (
+      <View
+        style={[
+          styles.imageFallback,
+          { width: size, height: size, backgroundColor: theme.accentSoft },
+          style,
+        ]}>
+        <ThemedText type="h2" style={{ color: theme.accent }}>
+          {name.charAt(0).toUpperCase()}
         </ThemedText>
-      )}
-    </Animated.View>
-  );
-}
-
-/**
- * Product image area: photo (or letter-tile fallback) with the savings
- * badge and zoom affordance overlaid. Extraction target — the media
- * branch is independent from pricing/stats logic.
- */
-function ProductMedia({
-  productName,
-  imageUrl,
-  hasDiscount: discounted,
-  savePercent: percentOff,
-  onOpenViewer,
-}: {
-  productName: string;
-  imageUrl: string | null;
-  hasDiscount: boolean;
-  savePercent: number;
-  onOpenViewer: () => void;
-}) {
-  const theme = useTheme();
+      </View>
+    );
+  }
 
   return (
-    <View>
-      {imageUrl ? (
-        <Pressable
-          accessibilityRole="imagebutton"
-          accessibilityLabel={`View full image of ${productName}`}
-          onPress={onOpenViewer}>
-          <Image source={{ uri: imageUrl }} style={styles.productImage} />
-        </Pressable>
-      ) : (
-        <View style={[styles.productImage, styles.imageFallback, { backgroundColor: theme.accentSoft }]}>
-          <ThemedText type="display" style={{ color: theme.accent }}>
-            {productName.charAt(0).toUpperCase()}
-          </ThemedText>
-        </View>
+    <View style={[{ width: size, height: size, borderRadius: Radius.md, overflow: 'hidden' }, style]}>
+      {!loaded && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            styles.imagePlaceholder,
+            { backgroundColor: theme.surfaceSecondary },
+          ]}
+        />
       )}
-
-      {/* Savings badge overlays the image, Flipkart-style. */}
-      {discounted && percentOff > 0 && (
-        <View style={styles.saveBadge}>
-          <ThemedText type="caption" style={styles.saveBadgeText}>
-            {percentOff}% OFF
-          </ThemedText>
-        </View>
-      )}
-
-      {/* Zoom affordance so users know the image opens full-screen. */}
-      {imageUrl && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View full image"
-          onPress={onOpenViewer}
-          style={styles.expandHint}>
-          <Icon name="expand" size={14} color={theme.textSecondary} />
-        </Pressable>
-      )}
+      <Image
+        source={{ uri }}
+        style={[styles.productImage, { opacity: loaded ? 1 : 0 }]}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        resizeMode="cover"
+      />
     </View>
   );
 }
 
-/**
- * Flipkart-style inline price row: hero selling price, struck MRP, and
- * the saving percent. Always the live DB value — the AI never prices.
- */
-function PriceBlock({ product }: { product: ProductWithImages }) {
+// ---------------------------------------------------------------------------
+// Main Match Card
+// ---------------------------------------------------------------------------
+
+function MainMatchCard({ product, similarity }: { product: ProductWithImages; similarity: number }) {
   const theme = useTheme();
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const discounted = hasDiscount(product);
   const percentOff = savePercent(product);
 
   return (
-    <View style={styles.priceSection}>
-      <View style={styles.priceBlock}>
-        <PriceText variant="hero">{formatPriceWithUnit(product.selling_price, product.unit)}</PriceText>
-        {discounted && (
-          <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrpValue}>
-            {formatPrice(product.mrp)}
+    <Animated.View entering={FadeInDown.duration(300)} style={styles.mainCard}>
+      {/* Confidence badge */}
+      <View style={[styles.confidenceBadge, { backgroundColor: theme.success }]}>
+        <Icon name="checkmark-circle" size={14} color={theme.white} />
+        <ThemedText type="caption" style={{ color: theme.white }}>
+          {confidencePercent(similarity)} match
+        </ThemedText>
+      </View>
+
+      {/* Product image */}
+      <Pressable
+        accessibilityRole="imagebutton"
+        accessibilityLabel={`View full image of ${product.name}`}
+        onPress={() => setViewerOpen(true)}>
+        <ProductImage uri={firstImage} name={product.name} size={200} style={styles.mainImage} />
+      </Pressable>
+
+      {/* Product info */}
+      <View style={styles.mainInfo}>
+        <ThemedText type="h2" style={styles.productName}>
+          {product.name}
+        </ThemedText>
+
+        {product.brand && (
+          <ThemedText type="body" themeColor="textSecondary">
+            {product.brand}
           </ThemedText>
         )}
-        {discounted && percentOff > 0 && (
-          <ThemedText type="smallBold" style={{ color: theme.success }}>
-            {percentOff}% off
+
+        <ThemedText type="caption" themeColor="textTertiary">
+          {unitLabel(product.unit)}
+        </ThemedText>
+
+        {/* Price */}
+        <View style={styles.priceRow}>
+          <PriceText variant="hero">{formatPriceWithUnit(product.selling_price, product.unit)}</PriceText>
+          {discounted && (
+            <View style={styles.discountBadge}>
+              <ThemedText type="caption" style={{ color: theme.white }}>
+                {percentOff}% OFF
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
+        {discounted && (
+          <ThemedText type="bodySmall" themeColor="textTertiary" style={styles.mrpText}>
+            MRP: {formatPrice(product.mrp)}
           </ThemedText>
         )}
       </View>
-      <ThemedText type="caption" themeColor="textTertiary">
-        Selling price · incl. of all taxes
-      </ThemedText>
-    </View>
-  );
-}
-
-/**
- * Match card. Layout per spec:
- * image → name → unit → MRP / SELLING PRICE (dominant) → Stock / Match.
- * Every value comes from the products table — the AI contributes only the
- * product id and the similarity score. Manual picks hide the Match tile.
- */
-function MatchCard({
-  shown,
-  headerIcon,
-  headerTitle,
-  headerTone,
-}: {
-  shown: ShownProduct;
-  headerIcon: 'checkmark-circle' | 'person';
-  headerTitle: string;
-  headerTone: 'success' | 'warning';
-}) {
-  const theme = useTheme();
-  const { product, similarity } = shown;
-  const [viewerOpen, setViewerOpen] = useState(false);
-
-  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
-  const stockLabel = sharedStockLabel(product.stock, { withCount: true });
-
-  const openViewer = () => setViewerOpen(true);
-
-  return (
-    <View style={styles.stack}>
-      <MatchBanner
-        icon={headerIcon}
-        title={headerTitle}
-        tone={headerTone}
-        similarity={similarity}
-      />
-
-      {/* Product card — e-commerce product-page layout. */}
-      <Animated.View
-        entering={FadeInDown.duration(300).delay(70)}
-        style={[
-          styles.card,
-          { backgroundColor: theme.surface, borderColor: theme.border },
-          Shadows.sm,
-        ]}>
-        <ProductMedia
-          productName={product.name}
-          imageUrl={firstImage}
-          hasDiscount={hasDiscount(product)}
-          savePercent={savePercent(product)}
-          onOpenViewer={openViewer}
-        />
-
-        <View style={styles.cardBody}>
-          {/* Name + unit */}
-          <ThemedText type="h2">{product.name}</ThemedText>
-          <ThemedText type="caption" themeColor="textTertiary">
-            {unitLabel(product.unit)}
-          </ThemedText>
-
-          <PriceBlock product={product} />
-
-          {/* Stock + Match stats (Match hidden for manual picks) */}
-          <View style={styles.statRow}>
-            <View style={styles.statFlex}>
-              <StatTile
-                label="Stock"
-                value={stockLabel}
-                tone={stockTone(product.stock) === 'success' ? undefined : stockTone(product.stock)}
-              />
-            </View>
-            {similarity !== null && (
-              <View style={styles.statFlex}>
-                <StatTile label="Match" value={confidencePercent(similarity)} tone="success" />
-              </View>
-            )}
-          </View>
-        </View>
-      </Animated.View>
 
       <ImageViewer
         visible={viewerOpen}
@@ -300,223 +181,169 @@ function MatchCard({
         caption={product.name}
         onClose={() => setViewerOpen(false)}
       />
-    </View>
+    </Animated.View>
   );
 }
 
-/**
- * Low-confidence candidate row: image, name, similarity, Select button.
- * Deliberately NO price — nothing is "chosen" yet, and prices are only
- * ever shown from the products table after an explicit selection.
- */
-function CandidateRow({
+// ---------------------------------------------------------------------------
+// Similar Product Card (compact)
+// ---------------------------------------------------------------------------
+
+function SimilarProductCard({
   candidate,
-  selected,
-  onSelect,
+  onPress,
 }: {
   candidate: MatchCandidateView;
-  selected: boolean;
-  onSelect: () => void;
+  onPress: () => void;
 }) {
   const theme = useTheme();
   const firstImage = getProductImageUrl(candidate.product.product_images[0]?.image_url);
+  const discounted = hasDiscount(candidate.product);
 
   return (
-    <View
-      style={[
-        styles.candidateCard,
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${candidate.product.name}, ${formatPrice(candidate.product.selling_price)}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.similarCard,
         { backgroundColor: theme.surface, borderColor: theme.border },
         Shadows.sm,
+        pressed && styles.pressed,
       ]}>
-      {firstImage ? (
-        <Image source={{ uri: firstImage }} style={styles.candidateThumb} />
-      ) : (
-        <View style={[styles.candidateThumb, styles.candidateThumbFallback]}>
-          <ThemedText type="bodySmall" style={{ color: theme.accent }}>
-            {candidate.product.name.charAt(0).toUpperCase()}
-          </ThemedText>
-        </View>
-      )}
+      <ProductImage uri={firstImage} name={candidate.product.name} size={64} />
 
-      <View style={styles.candidateInfo}>
-        <ThemedText type="smallBold" numberOfLines={1}>
+      <View style={styles.similarInfo}>
+        <ThemedText type="body" numberOfLines={1} style={styles.similarName}>
           {candidate.product.name}
         </ThemedText>
-        {/* Similarity bar — length reads faster than a % label alone. */}
-        <View style={[styles.similarityTrack, { backgroundColor: theme.surfaceSecondary }]}>
-          <View
-            style={[
-              styles.similarityFill,
-              {
-                width: `${Math.round(candidate.similarity * 100)}%`,
-                backgroundColor: candidate.similarity >= 0.75 ? theme.warning : theme.accent,
-              },
-            ]}
-          />
+        {candidate.product.brand && (
+          <ThemedText type="caption" themeColor="textTertiary" numberOfLines={1}>
+            {candidate.product.brand}
+          </ThemedText>
+        )}
+        <View style={styles.similarPriceRow}>
+          <PriceText variant="card">
+            {formatPriceWithUnit(candidate.product.selling_price, candidate.product.unit)}
+          </PriceText>
+          {discounted && (
+            <ThemedText type="caption" themeColor="textTertiary" style={styles.mrpSmall}>
+              {formatPrice(candidate.product.mrp)}
+            </ThemedText>
+          )}
         </View>
-        <ThemedText type="caption" themeColor="textTertiary">
-          {confidencePercent(candidate.similarity)} similar
-        </ThemedText>
       </View>
 
-      <Button
-        title={selected ? 'Selected ✓' : 'Select'}
-        size="sm"
-        variant={selected ? 'secondary' : 'primary'}
-        onPress={onSelect}
-        disabled={selected}
-        accessibilityLabel={`Select ${candidate.product.name}, ${confidencePercent(candidate.similarity)} similar`}
-      />
-    </View>
+      <View style={styles.similarMatch}>
+        <View
+          style={[
+            styles.matchDot,
+            {
+              backgroundColor:
+                candidate.similarity >= 0.85
+                  ? theme.success
+                  : candidate.similarity >= 0.75
+                    ? theme.warning
+                    : theme.textTertiary,
+            },
+          ]}
+        />
+        <ThemedText type="caption" themeColor="textTertiary">
+          {confidencePercent(candidate.similarity)}
+        </ThemedText>
+      </View>
+    </Pressable>
   );
 }
 
-/**
- * Header chrome for the match card, by how the product was chosen.
- * A picked-from-list product is user-confirmed (warning tone); a direct
- * high-confidence hit is the system's find (success tone).
- */
-function cardHeader(selected: boolean, manual: boolean) {
-  if (selected || manual) {
-    return { icon: 'person' as const, title: 'You selected', tone: 'warning' as const };
-  }
-  return { icon: 'checkmark-circle' as const, title: 'Product Found ✓', tone: 'success' as const };
-}
+// ---------------------------------------------------------------------------
+// Similar Products Section
+// ---------------------------------------------------------------------------
 
-/**
- * Derived presentation state for the result screen: which decision the
- * backend made, which product the card shows (manual pick > selected
- * candidate > top match), and which panel should render. Pure derivation
- * extracted from the component body — no side effects, no hooks besides
- * being called unconditionally from the screen.
- */
-function useResultPresentation(
-  visual: ReturnType<typeof matchSession.getResult>,
-  manualProduct: ProductWithImages | null,
-  selected: MatchCandidateView | null,
-) {
-  const outcome = visual?.outcome ?? null;
-
-  // Decision uses the threshold the BACKEND used, so server-side tuning
-  // changes behavior with no app update. A below-threshold 'identified'
-  // still renders as ambiguous — the confidence invariant holds either way.
-  const decision = outcome ? analyzeMatchOutcome(outcome, outcome.threshold) : null;
-
-  const shownCandidate: ShownProduct | null = manualProduct
-    ? { product: manualProduct, similarity: null }
-    : selected
-      ? { product: selected.product, similarity: selected.similarity }
-      : decision?.kind === 'single' && outcome && outcome.candidates[0]
-        ? {
-            product: outcome.candidates[0].product,
-            similarity: outcome.candidates[0].similarity,
-          }
-        : null;
-
-  return {
-    outcome,
-    photo: visual?.photo ?? null,
-    shownCandidate,
-    isAmbiguous: decision?.kind === 'ambiguous' && !selected && !!outcome,
-    isNoMatch: decision?.kind === 'none',
-    selectedId: selected?.product.id ?? null,
-  };
-}
-
-/**
- * Low-confidence panel: "Not completely sure" explanation, ranked
- * candidate rows, and the manual-search fallback. Candidates are a small
- * server-limited set — mapped rows in a plain View, intentionally not a
- * separate virtualized list inside the screen's ScrollView.
- */
-function AmbiguousCandidates({
-  outcome,
-  selectedId,
+function SimilarProductsSection({
+  products,
   onSelect,
-  onSearchManually,
 }: {
-  outcome: VisualMatchOutcome;
-  selectedId: string | null;
-  onSelect: (candidate: MatchCandidateView) => void;
-  onSearchManually: () => void;
+  products: MatchCandidateView[];
+  onSelect: (product: MatchCandidateView) => void;
 }) {
-  const theme = useTheme();
+  if (products.length === 0) return null;
 
   return (
-    <Animated.View entering={FadeInDown.duration(300)} style={styles.stack}>
-      <View style={styles.headerRow}>
-        <Icon name="help-circle" size={22} color={theme.warning} />
-        <ThemedText type="h3">Not completely sure</ThemedText>
-      </View>
-      <ThemedText type="bodySmall" themeColor="textSecondary">
-        Best confidence was {confidencePercent(outcome.confidence)}, below the{' '}
-        {confidencePercent(outcome.threshold)} threshold. Select the right product below — its
-        current price is shown after you pick.
+    <Animated.View entering={FadeInDown.duration(300).delay(100)} style={styles.section}>
+      <ThemedText type="h3" style={styles.sectionTitle}>
+        Similar Products
       </ThemedText>
-      <View style={styles.candidateList}>
-        {outcome.candidates.map((candidate) => (
-          <CandidateRow
+      <ThemedText type="caption" themeColor="textTertiary" style={styles.sectionSubtitle}>
+        {products.length} {products.length === 1 ? 'product' : 'products'} found
+      </ThemedText>
+      <View style={styles.similarList}>
+        {products.slice(0, 10).map((candidate) => (
+          <SimilarProductCard
             key={candidate.product.id}
             candidate={candidate}
-            selected={selectedId === candidate.product.id}
-            onSelect={() => onSelect(candidate)}
+            onPress={() => onSelect(candidate)}
           />
         ))}
-      </View>
-
-      {/* Manual fallback */}
-      <View style={[styles.fallbackCard, { backgroundColor: theme.surfaceSecondary }]}>
-        <Icon name="search" size={18} color={theme.textSecondary} />
-        <View style={styles.fallbackText}>
-          <ThemedText type="smallBold">Can’t identify this product?</ThemedText>
-          <ThemedText type="caption" themeColor="textTertiary">
-            Look it up by name or category instead.
-          </ThemedText>
-        </View>
-        <Button title="Search Manually" size="sm" onPress={onSearchManually} />
       </View>
     </Animated.View>
   );
 }
 
-/**
- * Final step of the scan flow. High confidence → "Product Found ✓" card
- * with the DB selling price as the visual centerpiece. Low confidence →
- * "Not completely sure" with ranked candidates, a manual-search fallback,
- * and, for manual picks, the same card without a fabricated match score.
- */
+// ---------------------------------------------------------------------------
+// Main Screen
+// ---------------------------------------------------------------------------
+
 export default function FindProductResultScreen() {
   const router = useRouter();
   const theme = useTheme();
 
   const visual = matchSession.getResult();
   const manualProduct = matchSession.getManualResult();
-  const [selected, setSelected] = useState<MatchCandidateView | null>(null);
-  const { outcome, photo, shownCandidate, isAmbiguous, isNoMatch, selectedId } =
-    useResultPresentation(visual, manualProduct, selected);
+  const [selectedCandidate, setSelectedCandidate] = useState<MatchCandidateView | null>(null);
 
-  const handleDone = () => {
+  // Determine what to show
+  const outcome = visual?.outcome ?? null;
+  const decision = outcome ? analyzeMatchOutcome(outcome) : null;
+
+  // Priority: manual pick > selected candidate > main match
+  const mainProduct: { product: ProductWithImages; similarity: number } | null = manualProduct
+    ? { product: manualProduct, similarity: 0 }
+    : selectedCandidate
+      ? { product: selectedCandidate.product, similarity: selectedCandidate.similarity }
+      : decision?.kind === 'single' && outcome?.main_match
+        ? { product: outcome.main_match.product, similarity: outcome.main_match.similarity }
+        : null;
+
+  const similarProducts = outcome?.similar_products ?? [];
+  const hasSimilar = similarProducts.length > 0;
+
+  // Handlers
+  const handleDone = useCallback(() => {
     matchSession.clear();
     router.dismissTo('/(tabs)');
-  };
+  }, [router]);
 
-  const handleScanAgain = () => {
+  const handleScanAgain = useCallback(() => {
     matchSession.clear();
     router.replace('/find-product');
-  };
+  }, [router]);
 
-  /** Manual fallback: keep the flow, jump to the search screen. */
-  const handleSearchManually = () => {
+  const handleSearchManually = useCallback(() => {
     matchSession.clear();
     router.push('/find-product/search');
-  };
+  }, [router]);
 
-  // Error/recovery state: deep link or expired session with nothing to show.
+  const handleSelectSimilar = useCallback((candidate: MatchCandidateView) => {
+    setSelectedCandidate(candidate);
+  }, [setSelectedCandidate]);
+
+  // Empty state (no session data)
   if (!visual && !manualProduct) {
     return (
-      <ThemedView style={styles.grow}>
-        <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-          <View style={styles.center}>
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+          <View style={styles.centerContent}>
             <EmptyState
               title="No result yet"
               description="Take a product photo to get a match, or search the catalog manually."
@@ -529,260 +356,296 @@ export default function FindProductResultScreen() {
     );
   }
 
-  const header = cardHeader(!!selected, !!manualProduct);
+  // No match state
+  if (decision?.kind === 'none' && !mainProduct) {
+    return (
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Pressable
+              onPress={handleDone}
+              style={styles.backButton}
+              accessibilityLabel="Go back">
+              <Icon name="close" size={20} color={theme.text} />
+            </Pressable>
+            <ThemedText type="h3">Result</ThemedText>
+            <View style={styles.headerSpacer} />
+          </View>
+        </SafeAreaView>
 
-  return (
-    <ThemedView style={styles.grow}>
-      <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {photo && <Image source={{ uri: photo.uri }} style={styles.capturedThumb} />}
+        <SafeAreaView style={styles.flex} edges={['bottom']}>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* Captured image preview */}
+            {visual?.photo && (
+              <Animated.View entering={FadeIn.duration(200)} style={styles.imagePreviewContainer}>
+                <Image source={{ uri: visual.photo.uri }} style={styles.capturedThumb} />
+              </Animated.View>
+            )}
 
-          {/* High confidence, selected candidate, or manual pick */}
-          {shownCandidate && (
-            <Animated.View entering={FadeInDown.duration(300)}>
-              <MatchCard
-                shown={shownCandidate}
-                headerIcon={header.icon}
-                headerTitle={header.title}
-                headerTone={header.tone}
-              />
-              {selected && (
-                <Button
-                  title="Not the right product? Choose another"
-                  variant="ghost"
-                  onPress={() => setSelected(null)}
-                  style={styles.chooseAnother}
-                />
-              )}
-            </Animated.View>
-          )}
-
-          {/* Low confidence — "Not completely sure" */}
-          {isAmbiguous && outcome && (
-            <AmbiguousCandidates
-              outcome={outcome}
-              selectedId={selectedId}
-              onSelect={setSelected}
-              onSearchManually={handleSearchManually}
-            />
-          )}
-
-          {/* No match */}
-          {isNoMatch && (
             <EmptyState
-              title="No matching product"
-              description="This item isn’t in the catalog yet — or try finding it by name."
+              title="Product not found"
+              description="This item isn't in the catalog yet. Try searching by name or scan another product."
               icon={<Icon name="search" size={26} color={theme.accent} />}
               action={
                 <View style={styles.noMatchActions}>
                   <Button title="Search Manually" onPress={handleSearchManually} />
-                  <Button
-                    title="Scan another product"
-                    variant="secondary"
-                    onPress={handleScanAgain}
-                  />
+                  <Button title="Scan Again" variant="secondary" onPress={handleScanAgain} />
                 </View>
               }
             />
-          )}
-        </ScrollView>
+          </ScrollView>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
 
-        {/* Bottom actions */}
-        <View style={styles.bottomActions}>
-          {shownCandidate && (
-            <Button title="Scan Another" onPress={handleScanAgain} block size="lg" />
-          )}
-          <Button title="Done" variant="secondary" onPress={handleDone} block />
+  // Main result view
+  return (
+    <ThemedView style={styles.container}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={handleDone}
+            style={styles.backButton}
+            accessibilityLabel="Go back">
+            <Icon name="close" size={20} color={theme.text} />
+          </Pressable>
+          <ThemedText type="h3">
+            {mainProduct ? 'Product Found' : 'Similar Products'}
+          </ThemedText>
+          <View style={styles.headerSpacer} />
         </View>
+      </SafeAreaView>
+
+      <SafeAreaView style={styles.flex} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Captured image preview */}
+          {visual?.photo && (
+            <Animated.View entering={FadeIn.duration(200)} style={styles.imagePreviewContainer}>
+              <Image source={{ uri: visual.photo.uri }} style={styles.capturedThumb} />
+              <ThemedText type="caption" themeColor="textTertiary">
+                Your photo
+              </ThemedText>
+            </Animated.View>
+          )}
+
+          {/* Main matched product */}
+          {mainProduct && (
+            <MainMatchCard product={mainProduct.product} similarity={mainProduct.similarity} />
+          )}
+
+          {/* Selected candidate actions */}
+          {selectedCandidate && mainProduct && (
+            <Button
+              title="View original match"
+              variant="ghost"
+              onPress={() => setSelectedCandidate(null)}
+              style={styles.viewOriginalButton}
+            />
+          )}
+
+          {/* Similar products */}
+          {hasSimilar && (
+            <SimilarProductsSection products={similarProducts} onSelect={handleSelectSimilar} />
+          )}
+
+          {/* Bottom actions */}
+          <View style={styles.bottomActions}>
+            <Button
+              title="Scan Another Product"
+              onPress={handleScanAgain}
+              block
+              size="lg"
+              icon={<Icon name="camera" size={18} color={theme.white} />}
+            />
+            <Button
+              title="Search Manually"
+              variant="secondary"
+              onPress={handleSearchManually}
+              block
+            />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
 const styles = StyleSheet.create({
-  grow: {
+  container: {
     flex: 1,
+  },
+  safeArea: {
+    flex: 0,
   },
   flex: {
     flex: 1,
   },
-  center: {
+  centerContent: {
     flex: 1,
     padding: Spacing.four,
     justifyContent: 'center',
   },
-  content: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    gap: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.five,
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     width: '100%',
+    gap: Spacing.four,
+  },
+  imagePreviewContainer: {
+    alignItems: 'center',
+    gap: Spacing.one,
   },
   capturedThumb: {
     width: 56,
     height: 56,
     borderRadius: Radius.md,
-    alignSelf: 'center',
     backgroundColor: 'rgba(100,116,139,0.12)',
   },
-  stack: {
-    gap: Spacing.three,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  card: {
+
+  // Main card
+  mainCard: {
     borderRadius: Radius.lg,
     borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'white',
     overflow: 'hidden',
+    ...Shadows.md,
   },
-  expandHint: {
-    position: 'absolute',
-    right: Spacing.two,
-    bottom: Spacing.two,
-    width: 28,
-    height: 28,
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+  confidenceBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
   },
-  productImage: {
+  mainImage: {
     width: '100%',
     aspectRatio: 1,
-    backgroundColor: 'rgba(100,116,139,0.12)',
-    objectFit: 'cover',
+    backgroundColor: 'rgba(100,116,139,0.08)',
   },
   imageFallback: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  saveBadge: {
-    position: 'absolute',
-    top: Spacing.three,
-    left: Spacing.three,
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(2,6,23,0.72)',
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 3,
+  imagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  saveBadgeText: {
-    color: '#FFFFFF', // always-on dark scrim — theme-independent by design
-    letterSpacing: 0.4,
+  productImage: {
+    width: '100%',
+    height: '100%',
   },
-  cardBody: {
+  mainInfo: {
     padding: Spacing.four,
     gap: Spacing.one,
   },
-  priceSection: {
-    gap: Spacing.one,
+  productName: {
+    fontWeight: '600',
   },
-  priceBlock: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-  },
-  mrpValue: {
-    textDecorationLine: 'line-through',
-  },
-  priceValue: {
-    // Size/weight/tracking now come from the PriceText hero variant.
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-  },
-  statFlex: {
-    flex: 1,
-  },
-  statTile: {
-    borderRadius: Radius.md,
-    padding: Spacing.three,
-    gap: Spacing.one,
-    alignItems: 'flex-start',
-    borderWidth: 1,
-  },
-  chooseAnother: {
-    marginTop: Spacing.two,
-    alignSelf: 'center',
-  },
-  fallbackCard: {
+  priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  discountBadge: {
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+  },
+  mrpText: {
+    textDecorationLine: 'line-through',
+  },
+
+  // Similar products
+  section: {
+    gap: Spacing.two,
+  },
+  sectionTitle: {
+    fontWeight: '600',
+  },
+  sectionSubtitle: {
+    marginBottom: Spacing.one,
+  },
+  similarList: {
+    gap: Spacing.two,
+  },
+  similarCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
     borderRadius: Radius.md,
+    borderWidth: 1,
     padding: Spacing.three,
   },
-  fallbackText: {
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
+  },
+  similarInfo: {
     flex: 1,
     gap: 2,
+  },
+  similarName: {
+    fontWeight: '500',
+  },
+  similarPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.one,
+    marginTop: 2,
+  },
+  mrpSmall: {
+    textDecorationLine: 'line-through',
+    fontSize: 11,
+  },
+  similarMatch: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  matchDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  // Actions
+  viewOriginalButton: {
+    alignSelf: 'center',
   },
   noMatchActions: {
     gap: Spacing.two,
   },
-  candidateList: {
-    gap: Spacing.two,
-  },
-  candidateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    padding: Spacing.three,
-  },
-  candidateInfo: {
-    flex: 1,
-    gap: Spacing.half,
-  },
-  similarityTrack: {
-    height: 6,
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-  },
-  similarityFill: {
-    height: '100%',
-    borderRadius: Radius.full,
-  },
-  matchBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  matchBannerIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: Radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  candidateThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(100,116,139,0.12)',
-  },
-  candidateThumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   bottomActions: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.three,
     gap: Spacing.two,
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-    width: '100%',
+    marginTop: Spacing.two,
   },
 });

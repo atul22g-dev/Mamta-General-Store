@@ -102,26 +102,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // The trigger created the profile with role=NULL; grant 'staff' now.
-    const { error: grantError } = await serviceClient
+    // `.select()` makes PostgREST return the affected rows so a grant that
+    // matched ZERO rows (trigger missing/failed → no profile row) is
+    // detectable — without it the function reported success while the new
+    // account could never sign in.
+    const { data: grantedRows, error: grantError } = await serviceClient
       .from('profiles')
       .update({ role: 'staff' })
-      .eq('id', created.user.id);
+      .eq('id', created.user.id)
+      .select('id');
 
-    if (grantError) {
-      // The auth user exists but the role grant failed — report honestly
-      // so the admin can fix it via SQL rather than silently pretending.
+    if (grantError || !grantedRows || grantedRows.length === 0) {
+      // The auth user exists but the profile row is missing (or the grant
+      // failed) — report honestly so the admin can fix it via SQL rather
+      // than silently pretending. The repair SQL below also recreates a
+      // missing profile, not just the role.
       return json(
         {
           error:
             'Account created, but granting the staff role failed. Grant it with: ' +
-            `update public.profiles set role='staff' where email='${email}';`,
+            `insert into public.profiles (id, email, role) values ('${created.user.id}', '${email}', 'staff') ` +
+            `on conflict (id) do update set role = 'staff';`,
         },
         207,
       );
     }
 
     return json({ email, role: 'staff' }, 200);
-  } catch (_error) {
+  } catch {
     return json({ error: 'Unexpected server error. Try again.' }, 500);
   }
 });

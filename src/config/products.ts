@@ -45,15 +45,17 @@
 
 /** Product categories — `value` must match the DB enum product_category. */
 export const PRODUCT_CATEGORY_OPTIONS = [
-  { value: 'household', label: 'Household' },
+  { value: 'boots', label: 'Boots' },
   { value: 'personal_care', label: 'Personal Care' },
+  { value: 'toys', label: 'Toys' },
+  { value: 'cloths', label: 'Cloths' },
   { value: 'other', label: 'Other' },
 ] as const;
 
 /** Sale units — `value` must match the DB enum product_unit. */
 export const PRODUCT_UNIT_OPTIONS = [
   { value: 'piece', label: 'Piece' },
-  { value: 'Meter', label: 'Meter' },
+  { value: 'pair', label: 'Pair' },
 ] as const;
 
 /* ==========================================================================

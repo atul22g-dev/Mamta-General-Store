@@ -42,8 +42,10 @@ type ProductFormProps = {
   initialImages?: PickedImage[];
   submitting: boolean;
   submitError: string | null;
-  /** Brief success banner shown before navigation (e.g. “Saved ✓”). */
+  /** Brief success banner shown before navigation (e.g. "Saved ✓"). */
   successMessage?: string | null;
+  /** Embedding generation status message. */
+  embeddingStatus?: string | null;
   submitLabel?: string;
   submittingLabel?: string;
   onSubmit: (payload: ValidProductSubmit) => void;
@@ -62,6 +64,7 @@ export function ProductForm({
   submitting,
   submitError,
   successMessage,
+  embeddingStatus,
   submitLabel = 'Save Product',
   submittingLabel = 'Saving…',
   onSubmit,
@@ -143,6 +146,17 @@ export function ProductForm({
               <Icon name="checkmark-circle" size={18} color={theme.success} />
               <ThemedText type="smallBold" style={{ color: theme.success, flex: 1 }}>
                 {successMessage}
+              </ThemedText>
+            </Animated.View>
+          )}
+
+          {embeddingStatus && (
+            <Animated.View
+              entering={FadeInDown.duration(250)}
+              style={[styles.embeddingPanel, { backgroundColor: theme.accentSoft }]}>
+              <Icon name="sparkles" size={18} color={theme.accent} />
+              <ThemedText type="smallBold" style={{ color: theme.accent, flex: 1 }}>
+                {embeddingStatus}
               </ThemedText>
             </Animated.View>
           )}
@@ -335,6 +349,13 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   successPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+  },
+  embeddingPanel: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,

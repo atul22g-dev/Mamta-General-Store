@@ -19,8 +19,8 @@ import { fileUriToDataUri } from '@/lib/visual-match/base64';
 /** The visible stages of a match run, in order. */
 const STAGES = [
   { key: 'prepare', label: 'Reading your photo' },
+  { key: 'embed', label: 'Generating AI embedding' },
   { key: 'search', label: 'Searching the catalog' },
-  { key: 'price', label: 'Fetching the live price' },
 ] as const;
 
 /**
@@ -75,8 +75,14 @@ type Phase = 'working' | 'error';
 
 /**
  * Searching step: converts the captured photo to a data URI and runs the
- * visual-match pipeline (embed → similarity → product IDs → live products).
- * On success, hands the outcome to the result screen via the session store.
+ * visual-match pipeline (embed → similarity → product IDs → live products
+ * with the DB price). Concurrency contract: at most ONE match runs for a
+ * mounted screen — the in-flight guard blocks double invocation from
+ * StrictMode remounts and retry taps, the AbortController cancels the
+ * network work on unmount/cancel, and a runId makes late resolutions of
+ * any superseded run harmless (stale results can never reach the result
+ * screen). On success, hands the outcome to the result screen via the
+ * session store.
  */
 export default function FindProductSearchingScreen() {
   const router = useRouter();
@@ -84,33 +90,69 @@ export default function FindProductSearchingScreen() {
   const [phase, setPhase] = useState<Phase>('working');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const startedRef = useRef(false);
+  const inFlightRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const runIdRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      // Unmount (or StrictMode remount) cancels the network work; the
+      // runId bump ensures a late resolution still cannot navigate.
+      abortRef.current?.abort();
+      runIdRef.current += 1;
+    };
+  }, []);
 
   const runMatch = useCallback(async () => {
+    // Duplicate-request guard: a match is already running on this screen.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    const runId = ++runIdRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const shot = scanSession.getShot();
 
     if (!shot) {
-      setPhase('error');
-      setErrorMessage('No captured photo found. Start the scan again.');
+      if (runId === runIdRef.current) {
+        setPhase('error');
+        setErrorMessage('No captured photo found. Start the scan again.');
+      }
+      inFlightRef.current = false;
       return;
     }
 
+    const isStale = () => runId !== runIdRef.current;
+
+    // Data-URI conversion (HIGH-03 partial fix: MIME from the file, not a
+    // hardcoded image/jpeg — web picks may be PNG; see audit).
+    let dataUri: string;
     try {
-      const dataUri = await fileUriToDataUri(shot.uri, 'image/jpeg');
-      const result = await matchProductFromPhoto(dataUri);
-
-      if (!result.ok) {
+      dataUri = await fileUriToDataUri(shot.uri);
+    } catch {
+      if (!isStale()) {
         setPhase('error');
-        setErrorMessage(result.error);
-        return;
+        setErrorMessage('Could not read the captured photo. Try again.');
       }
-
-      matchSession.setResult(result.data, shot);
-      scanSession.clearShot();
-      router.replace('/find-product/result');
-    } catch (error) {
-      setPhase('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Matching failed.');
+      inFlightRef.current = false;
+      return;
     }
+
+    const result = await matchProductFromPhoto(dataUri, controller.signal);
+
+    if (isStale()) return; // superseded/cancelled run — touch nothing
+    inFlightRef.current = false;
+
+    if (!result.ok) {
+      setPhase('error');
+      setErrorMessage(result.error);
+      return;
+    }
+
+    matchSession.setResult(result.data, shot);
+    scanSession.clearShot();
+    router.replace('/find-product/result');
   }, [router]);
 
   // Run exactly once (React StrictMode/dev remounts double-run effects).
@@ -121,6 +163,9 @@ export default function FindProductSearchingScreen() {
   }, [runMatch]);
 
   const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+    runIdRef.current += 1; // late resolutions of this run are inert
+    inFlightRef.current = false;
     scanSession.clearShot();
     router.dismissTo('/(tabs)');
   }, [router]);
@@ -130,7 +175,7 @@ export default function FindProductSearchingScreen() {
       <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
         {phase === 'working' ? (
           <View style={styles.center}>
-            <Loading text="Matching your photo against the catalog…" />
+            <Loading text="Matching your photo against the catalog…" showIcon />
             <StageList />
           </View>
         ) : (

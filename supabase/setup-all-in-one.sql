@@ -89,16 +89,19 @@ create trigger on_auth_user_created
 -- ============================================================================
 
 create type public.product_category as enum (
+  'boots',
+  'personal_care',
+  'toys',
+  'cloths',
+  'other',
   'groceries',
   'snacks',
   'household',
   'beverages',
-  'personal_care',
-  'dairy',
-  'other'
+  'dairy'
 );
 
-create type public.product_unit as enum ('piece', 'kg', 'gram', 'litre', 'ml', 'pack', 'dozen');
+create type public.product_unit as enum ('piece', 'pair', 'kg', 'gram', 'litre', 'ml', 'pack', 'dozen');
 
 create table public.products (
   id            uuid primary key default gen_random_uuid(),
@@ -298,13 +301,17 @@ create policy "product images are publicly readable"
   to anon, authenticated
   using (bucket_id = 'product-images');
 
--- Authenticated staff/admins may upload, but only into a folder that
+-- Staff/admins may upload (0007 hardening): role gate (NULL-role signups
+-- cannot upload), image MIME only, 5 MiB cap, and only into a folder that
 -- matches an existing product id.
-create policy "staff can upload product images"
+create policy "staff and admins can upload product images"
   on storage.objects for insert
   to authenticated
   with check (
     bucket_id = 'product-images'
+    and public.current_role() in ('admin', 'staff')
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
     and exists (
       select 1 from public.products p
       -- ⚠ Must qualify `storage.objects.name` — an unqualified `name`
@@ -320,6 +327,12 @@ create policy "admins can update product images"
   using (
     bucket_id = 'product-images'
     and public.is_admin()
+  )
+  with check (
+    bucket_id = 'product-images'
+    and public.is_admin()
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
   );
 
 create policy "admins can delete product images"
@@ -335,7 +348,7 @@ create policy "admins can delete product images"
 -- ============================================================================
 -- Architecture:
 --   • Each product_images row can carry one `embedding vector(512)` computed
---     from its image by the embedding provider (Cohere embed-v4.0, 512-dim).
+--     from its image by the embedding provider (MobileCLIP-S0, 512-dim).
 --   • The RPC `visual_search_matches` performs cosine-similarity search over
 --     all embedded reference images and returns ranked product candidates.
 --   • Prices are NEVER stored or derived here — the caller re-reads the
@@ -351,7 +364,7 @@ alter table public.product_images
   add column if not exists embedding vector(512);
 
 comment on column public.product_images.embedding is
-  'Embedding of the image computed by the embedding provider (Cohere embed-v4.0, 512 dims). Used for visual similarity search.';
+  'Embedding of the image computed by the embedding provider (MobileCLIP-S0, 512 dims). Used for visual similarity search.';
 
 -- Approximate nearest-neighbour index for cosine distance.
 -- HNSW: fast, works well from small catalogs up to millions of rows.
@@ -384,17 +397,17 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_catalog
 as $$
   select
     pi.product_id,
     pi.id as image_id,
-    1 - (pi.embedding <=> query_embedding) as similarity
+    1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) as similarity
   from public.product_images pi
   where pi.embedding is not null
-    and 1 - (pi.embedding <=> query_embedding) >= match_threshold
-  order by pi.embedding <=> query_embedding
-  limit greatest(match_count, 1);
+    and 1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) >= match_threshold
+  order by pi.embedding operator(pg_catalog.<=>) query_embedding asc
+  limit least(greatest(coalesce(match_count, 5), 1), 25);
 $$;
 
 revoke all on function public.visual_search_matches(vector(512), double precision, integer)
@@ -467,6 +480,99 @@ grant execute on function public.clear_product_embeddings(uuid)
 -- ----------------------------------------------------------------------------
 -- Already created admin-only in the 0003 section above (same name, same
 -- definition); no duplicate drop/create needed in this consolidated file.
+
+-- ============================================================================
+-- 0007 — RLS & storage hardening (see migrations/0007_rls_storage_hardening.sql)
+-- ============================================================================
+-- Maintenance helper stays service-role-only (defensive re-assertion).
+revoke execute on function public.clear_product_embeddings(uuid)
+  from public, anon, authenticated;
+grant execute on function public.clear_product_embeddings(uuid)
+  to service_role;
+
+-- Similarity search stays anon/authenticated-callable BY DESIGN (shop-floor
+-- scans); SECURITY DEFINER exposure is catalog image ids + similarity only.
+comment on function public.visual_search_matches(vector(512), double precision, integer) is
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER by design so anonymous shop-floor scans can search; definer exposure is limited to catalog image ids + similarity scores. NEVER prices, never user data.';
+
+-- ============================================================================
+-- 0009 — Free visual search: schema foundation
+-- ============================================================================
+-- Adds brand, subcategory, is_active to products; image_type to product_images;
+-- rewrites visual_search_matches to filter active products only.
+-- (See supabase/migrations/0009_free_visual_search_foundation.sql)
+
+alter table public.products
+  add column if not exists brand text;
+
+comment on column public.products.brand is
+  'Product brand name (nullable for unbranded/local items).';
+
+alter table public.products
+  add column if not exists subcategory text;
+
+comment on column public.products.subcategory is
+  'Optional subcategory within the product category (e.g. "cola" under "beverages").';
+
+alter table public.products
+  add column if not exists is_active boolean not null default true;
+
+comment on column public.products.is_active is
+  'When false the product is hidden from customer visual search and catalog browse. Defaults true for existing products.';
+
+create index if not exists products_is_active_idx
+  on public.products (is_active)
+  where is_active = true;
+
+create index if not exists products_active_created_idx
+  on public.products (created_at desc)
+  where is_active = true;
+
+alter table public.product_images
+  add column if not exists image_type text not null default 'main';
+
+comment on column public.product_images.image_type is
+  'Image role: main (primary), detail, variant, or thumbnail. Used to prioritize which images to embed.';
+
+create index if not exists product_images_main_idx
+  on public.product_images (product_id)
+  where image_type = 'main';
+
+create or replace function public.visual_search_matches(
+  query_embedding vector(512),
+  match_threshold double precision default 0.82,
+  match_count integer default 5
+)
+returns table (
+  product_id uuid,
+  image_id uuid,
+  similarity double precision
+)
+language sql
+stable
+security definer
+set search_path = public, pg_catalog
+as $$
+  select
+    pi.product_id,
+    pi.id as image_id,
+    1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) as similarity
+  from public.product_images pi
+  inner join public.products p on p.id = pi.product_id
+  where pi.embedding is not null
+    and p.is_active = true
+    and 1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) >= match_threshold
+  order by pi.embedding operator(pg_catalog.<=>) query_embedding asc
+  limit least(greatest(coalesce(match_count, 5), 1), 25);
+$$;
+
+revoke all on function public.visual_search_matches(vector(512), double precision, integer)
+  from public;
+grant execute on function public.visual_search_matches(vector(512), double precision, integer)
+  to anon, authenticated;
+
+comment on function public.visual_search_matches(vector(512), double precision, integer) is
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id + image_id + similarity; NEVER prices, NEVER raw embeddings.';
 
 -- ============================================================================
 -- ✅ SCHEMA COMPLETE

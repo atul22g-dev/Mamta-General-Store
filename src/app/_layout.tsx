@@ -1,5 +1,6 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
-import { useColorScheme } from 'react-native';
+import { useEffect } from 'react';
+import { Platform, useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/providers/auth-provider';
@@ -12,6 +13,15 @@ import { AuthProvider } from '@/providers/auth-provider';
  */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // Web startup handoff: tell the pre-hydration boot splash (see +html.tsx)
+  // that the app has mounted, so the splash fades out only when real
+  // content is ready — not on a fixed timer that can outrun a slow bundle.
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.__signalAppReady?.();
+    }
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

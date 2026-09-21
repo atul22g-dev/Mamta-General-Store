@@ -8,6 +8,7 @@ import {
 import {
   createProduct,
   uploadProductImage,
+  generateImageEmbedding,
 } from '@/lib/products/product-service';
 
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
@@ -22,6 +23,7 @@ export default function AdminAddProductScreen() {
   const [status, setStatus] = useState<SubmitStatus>('idle');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [imageWarning, setImageWarning] = useState<string | null>(null);
+  const [embeddingStatus, setEmbeddingStatus] = useState<string | null>(null);
 
   // Guards against double-submission across the async success beat.
   const inFlightRef = useRef(false);
@@ -35,6 +37,7 @@ export default function AdminAddProductScreen() {
     setStatus('submitting');
     setSubmitError(null);
     setImageWarning(null);
+    setEmbeddingStatus(null);
 
     // 1. Create the product row.
     const created = await createProduct({
@@ -63,6 +66,7 @@ export default function AdminAddProductScreen() {
       pending.map((image) => uploadProductImage(created.data.id, image.uri)),
     );
     const failures = uploads.flatMap((upload) => (upload.ok ? [] : [upload.error]));
+    const successes = uploads.filter((upload) => upload.ok);
 
     if (failures.length > 0) {
       setImageWarning(
@@ -70,7 +74,26 @@ export default function AdminAddProductScreen() {
       );
     }
 
-    // 3. Success feedback, then on to the product list (replace so back
+    // 3. Generate embeddings for successfully uploaded images.
+    //    This is a FREE operation using MobileCLIP-S0 ONNX inference.
+    if (successes.length > 0) {
+      setEmbeddingStatus(`Generating embeddings for ${successes.length} image${successes.length > 1 ? 's' : ''}...`);
+
+      const embeddingResults = await Promise.all(
+        successes.map((upload) => generateImageEmbedding(upload.data.imageUrl)),
+      );
+
+      const embeddingFailures = embeddingResults.filter((r) => !r.ok);
+      if (embeddingFailures.length > 0) {
+        setImageWarning(
+          `Product saved, but ${embeddingFailures.length} image embedding${embeddingFailures.length > 1 ? 's' : ''} failed. Images are uploaded but not searchable yet.`,
+        );
+      } else {
+        setEmbeddingStatus(null);
+      }
+    }
+
+    // 4. Success feedback, then on to the product list (replace so back
     //    doesn't return to the form).
     setStatus('success');
     setTimeout(() => {
@@ -89,6 +112,7 @@ export default function AdminAddProductScreen() {
           ? (imageWarning ?? 'Product saved ✓')
           : null
       }
+      embeddingStatus={embeddingStatus}
       onSubmit={(payload) => void handleSubmit(payload)}
       onCancel={() => router.back()}
     />

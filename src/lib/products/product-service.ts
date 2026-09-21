@@ -14,6 +14,16 @@ export type ProductImageRef = { id: string; image_url: string };
 /** Product row with its attached images (via the FK embed). */
 export type ProductWithImages = Product & { product_images: ProductImageRef[] };
 
+/** Embedding generation status for an image. */
+export type EmbeddingStatus = 'pending' | 'generating' | 'success' | 'failed';
+
+/** Result of embedding generation for a single image. */
+export type EmbeddingResult = {
+  imageId: string;
+  status: EmbeddingStatus;
+  error?: string;
+};
+
 /**
  * Product data services — every Supabase read/write for the catalog lives
  * here, never inside UI components.
@@ -144,6 +154,64 @@ export async function uploadProductImage(
   }
 
   return { ok: true, data: { imageUrl: urlData.publicUrl, path: objectName } };
+}
+
+/**
+ * Generates a visual embedding for a product image via the embed-product-image
+ * edge function. This is a FREE operation using MobileCLIP-S0 ONNX inference.
+ *
+ * Must be called AFTER the image is uploaded to Storage and the product_images
+ * row exists, because the edge function reads the image from Storage.
+ *
+ * @param imageUrl - The public URL of the uploaded image
+ * @returns Success/failure status with optional error message
+ */
+export async function generateImageEmbedding(
+  imageUrl: string,
+): Promise<ServiceResult<true>> {
+  try {
+    const { error } = await supabase.functions.invoke('embed-product-image', {
+      body: { image_url: imageUrl },
+    });
+
+    if (error) {
+      return {
+        ok: false,
+        error: toMessage(error, 'Embedding generation failed. The image is uploaded but not searchable yet.'),
+      };
+    }
+
+    return { ok: true, data: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: toMessage(error, 'Embedding generation failed. The image is uploaded but not searchable yet.'),
+    };
+  }
+}
+
+/**
+ * Batch generates embeddings for multiple product images.
+ * Processes images sequentially to avoid overwhelming the edge function.
+ *
+ * @param imageUrls - Array of public URLs of uploaded images
+ * @returns Array of results with status for each image
+ */
+export async function generateEmbeddingsBatch(
+  imageUrls: string[],
+): Promise<EmbeddingResult[]> {
+  const results: EmbeddingResult[] = [];
+
+  for (const imageUrl of imageUrls) {
+    const result = await generateImageEmbedding(imageUrl);
+    results.push({
+      imageId: imageUrl,
+      status: result.ok ? 'success' : 'failed',
+      error: result.ok ? undefined : result.error,
+    });
+  }
+
+  return results;
 }
 
 /**

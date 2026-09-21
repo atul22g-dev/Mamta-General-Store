@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,61 +7,36 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Icon } from '@/components/ui/icon';
-import { ErrorState } from '@/components/ui/error-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { scanSession } from '@/lib/scan-session';
-import { submitForMatching } from '@/lib/visual-match/service';
-
-type SubmitState = 'idle' | 'submitting' | 'error';
 
 /**
  * Preview step: review the single captured photo, then either retake or
- * hand it to the visual-match service. AI matching is not implemented —
- * the service reports `not-configured` and we show an honest state while
- * still exercising the full flow seam.
+ * hand it to the matching pipeline. The embed → vector-search → products
+ * pipeline is live — the searching step runs it and routes to the result
+ * screen; no separate submission round-trip is needed for the one-shot
+ * single-photo flow.
  */
+
 export default function FindProductPreviewScreen() {
   const router = useRouter();
   const theme = useTheme();
 
   const shot = scanSession.getShot();
-  const [submitState, setSubmitState] = useState<SubmitState>('idle');
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const handleUsePhoto = useCallback(async () => {
-    if (!shot || submitState === 'submitting') return;
+  const handleUsePhoto = useCallback(() => {
+    if (!shot) return;
 
-    setSubmitState('submitting');
-    setSubmitError(null);
-
-    const result = await submitForMatching({
-      imageUri: shot.uri,
-      capturedAt: shot.capturedAt,
-    });
-
-    if (!result.ok) {
-      setSubmitState('error');
-      setSubmitError(result.error);
-      return;
-    }
-
-    if (result.data.status === 'not-configured') {
-      // Honest state: the matcher isn't connected. Keep the photo so the
-      // user can go back; explain instead of faking a result.
-      setSubmitState('error');
-      setSubmitError(
-        'Visual matching is not connected yet. Your photo is ready — this step will search the catalog automatically once the AI layer is enabled.',
-      );
-      return;
-    }
-
-    // Real matcher wired: carry the request id to the searching step.
+    // The matching pipeline is live: the searching screen runs the real
+    // embed → vector-search → products-table flow (with the DB price) and
+    // routes to the result screen. The photo stays in scanSession so the
+    // searching step can read it; scanning a new product overwrites it.
     router.push('/find-product/searching');
-  }, [shot, submitState, router]);
+  }, [shot, router]);
 
   const handleRetake = useCallback(() => {
     scanSession.clearShot();
@@ -120,19 +95,10 @@ export default function FindProductPreviewScreen() {
             </ThemedText>
           </View>
 
-          {submitState === 'error' && submitError && (
-            <ErrorState
-              title="Can’t start matching yet"
-              description={submitError}
-              style={styles.errorPanel}
-            />
-          )}
-
           <View style={styles.actions}>
             <Button
-              title={submitState === 'submitting' ? 'Submitting…' : 'Use Photo'}
-              onPress={() => void handleUsePhoto()}
-              disabled={submitState === 'submitting'}
+              title="Use Photo"
+              onPress={handleUsePhoto}
               block
               size="lg"
               icon={<Icon name="arrow-forward" size={18} color={theme.white} />}
@@ -143,7 +109,6 @@ export default function FindProductPreviewScreen() {
               variant="secondary"
               block
               size="lg"
-              disabled={submitState === 'submitting'}
               icon={<Icon name="images" size={18} color={theme.text} />}
             />
           </View>

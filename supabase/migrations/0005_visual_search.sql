@@ -3,7 +3,7 @@
 --
 -- Architecture:
 --   • Each product_images row can carry one `embedding vector(512)` computed
---     from its image by the embedding provider (Cohere embed-v4.0, 512-dim).
+--     from its image by the embedding provider (MobileCLIP-S0, 512-dim).
 --   • The RPC `visual_search_matches` performs cosine-similarity search over
 --     all embedded reference images and returns ranked product candidates.
 --   • Prices are NEVER stored or derived here — the caller re-reads the
@@ -19,7 +19,7 @@ alter table public.product_images
   add column if not exists embedding vector(512);
 
 comment on column public.product_images.embedding is
-  'Embedding of the image computed by the embedding provider (Cohere embed-v4.0, 512 dims). Used for visual similarity search.';
+  'Embedding of the image computed by the embedding provider (MobileCLIP-S0, 512 dims). Used for visual similarity search.';
 
 -- Approximate nearest-neighbour index for cosine distance.
 -- HNSW: fast, works well from small catalogs up to millions of rows.
@@ -71,7 +71,7 @@ grant execute on function public.visual_search_matches(vector(512), double preci
   to anon, authenticated;
 
 comment on function public.visual_search_matches is
-  'Cosine similarity search over product reference image embeddings. Returns product ids + similarity; NEVER prices.';
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id + image_id + similarity; NEVER prices, NEVER raw embeddings.';
 
 -- ----------------------------------------------------------------------------
 -- 3. Admin maintenance helper: clear embeddings for a product
