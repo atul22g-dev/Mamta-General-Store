@@ -35,7 +35,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /** MIME types the matcher accepts; anything else is sent as JPEG (camera captures). */
-const KNOWN_IMAGE_MIME = /^(image\/(png|webp))(;|$)/i;
+const KNOWN_IMAGE_MIME = /^(image\/png)(;|$)/i;
 
 /** Reads a local file URI and returns it as a data URI (native + web). */
 export async function fileUriToDataUri(
@@ -46,10 +46,11 @@ export async function fileUriToDataUri(
   const file = new File(fileUri);
   const buffer = await file.arrayBuffer();
   const base64 = bytesToBase64(new Uint8Array(buffer));
-  // The picker can hand over PNG/WebP sources; labeling those bytes as
+  // The picker can hand over PNG sources; labeling those bytes as
   // image/jpeg corrupts providers that trust the declared MIME. Web picker
   // URIs carry their type in a blob URL fragment — prefer it when present.
-  const detected = /(?:^|[&;])type=image\/(png|webp)(?:[&;]|$)/i.exec(fileUri);
+  // WebP is NOT supported by MobileCLIP-S0 (no decoder in Deno edge function).
+  const detected = /(?:^|[&;])type=image\/(png)(?:[&;]|$)/i.exec(fileUri);
   const resolved =
     detected && KNOWN_IMAGE_MIME.test(`image/${detected[1]};`)
       ? `image/${detected[1].toLowerCase()}`

@@ -8,7 +8,7 @@
 import { bytesToBase64 } from '@/lib/visual-match/base64';
 
 /** Allowed MIME types for product images. */
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png'] as const;
 
 /** Maximum image file size: 5 MB (binary). */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -38,7 +38,7 @@ export function validateImage(file: { mimeType?: string; size?: number }): Valid
     return {
       ok: false,
       error: 'invalid_type',
-      errorMessage: `Invalid image type. Allowed: JPEG, PNG, WebP.`,
+      errorMessage: `Invalid image type. Allowed: JPEG, PNG.`,
     };
   }
 
@@ -118,8 +118,6 @@ export function detectMimeType(uri: string): string {
   switch (ext) {
     case 'png':
       return 'image/png';
-    case 'webp':
-      return 'image/webp';
     case 'jpg':
     case 'jpeg':
     default:

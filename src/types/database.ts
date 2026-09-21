@@ -87,6 +87,7 @@ export type Database = {
           product_id: string;
           image_url: string;
           image_type: string;
+          embedding: string | null;
           created_at: string;
         };
         Insert: {
@@ -94,6 +95,7 @@ export type Database = {
           product_id: string;
           image_url: string;
           image_type?: string;
+          embedding?: string | null;
           created_at?: string;
         };
         Update: {
@@ -101,6 +103,7 @@ export type Database = {
           product_id?: string;
           image_url?: string;
           image_type?: string;
+          embedding?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -118,7 +121,7 @@ export type Database = {
     Functions: {
       visual_search_matches: {
         Args: {
-          query_embedding: string;
+          query_embedding: number[];
           match_threshold?: number;
           match_count?: number;
         };
