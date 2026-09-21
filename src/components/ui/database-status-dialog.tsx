@@ -1,5 +1,5 @@
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
+import Animated, { FadeInDown, ZoomIn, ZoomOut } from 'react-native-reanimated';
 
 import { Icon } from '@/components/ui/icon';
 import { ThemedText } from '@/components/themed-text';
@@ -103,6 +103,7 @@ export function DatabaseStatusDialog({
             exiting={ZoomOut.duration(140)}
             style={[styles.card, { backgroundColor: theme.surface }, Shadows.lg]}>
             <View style={[styles.iconTile, { backgroundColor: soft }]}>
+              <View style={[styles.iconRing, { borderColor: color }]} />
               <Icon name={icon} size={26} color={color} />
             </View>
             <ThemedText type="h3" style={styles.title}>
@@ -111,6 +112,19 @@ export function DatabaseStatusDialog({
             <ThemedText type="bodySmall" themeColor="textSecondary" style={styles.message}>
               {detail}
             </ThemedText>
+
+            {status === 'online' && typeof health.latencyMs === 'number' && (
+              <Animated.View
+                entering={FadeInDown.duration(220)}
+                style={[styles.statChip, { backgroundColor: soft, borderColor: `${color}33` }]}>
+                <ThemedText type="h3" style={{ color }}>
+                  {Math.round(health.latencyMs)}
+                </ThemedText>
+                <ThemedText type="caption" style={[styles.statUnit, { color }]}>
+                  ms round trip
+                </ThemedText>
+              </Animated.View>
+            )}
 
             {status === 'offline' && health.code !== null && (
               <View style={[styles.technical, { backgroundColor: theme.surfaceSecondary }]}>
@@ -160,12 +174,31 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   iconTile: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.md,
+    width: 56,
+    height: 56,
+    borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.one,
+  },
+  iconRing: {
+    position: 'absolute',
+    width: 56,
+    height: 56,
+    borderRadius: Radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  statChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one + 2,
+    borderRadius: Radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  statUnit: {
+    fontWeight: '600',
   },
   title: {
     textAlign: 'center',
@@ -180,6 +213,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: Spacing.two,
     alignSelf: 'stretch',
     marginTop: Spacing.two,
