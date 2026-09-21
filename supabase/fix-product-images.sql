@@ -29,6 +29,8 @@ create policy "product images are publicly readable"
 
 -- 3. Authenticated staff/admins may upload, but ONLY into a folder named
 --    after an existing product id (product-images/<product_id>/<file>).
+--    Includes role gate (NULL-role signups cannot upload), image MIME only,
+--    5 MiB cap, and product-folder existence check.
 --
 --    ⚠ COLUMN-QUALIFICATION BUG FIX: the original policy compared against
 --    `(storage.foldername(name))[1]` with an UNQUALIFIED `name` while the
@@ -38,11 +40,15 @@ create policy "product images are publicly readable"
 --    "new row violates row-level security policy".
 --    Fix: qualify the outer column as `storage.objects.name`.
 drop policy if exists "staff can upload product images" on storage.objects;
-create policy "staff can upload product images"
+drop policy if exists "staff and admins can upload product images" on storage.objects;
+create policy "staff and admins can upload product images"
   on storage.objects for insert
   to authenticated
   with check (
     bucket_id = 'product-images'
+    and public.current_role() in ('admin', 'staff')
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
     and exists (
       select 1 from public.products p
       where p.id::text = (storage.foldername(storage.objects.name))[1]
@@ -50,6 +56,7 @@ create policy "staff can upload product images"
   );
 
 -- 4. Only admins can replace or remove stored images.
+--    WITH CHECK ensures replaced files also pass MIME/size validation.
 drop policy if exists "admins can update product images" on storage.objects;
 create policy "admins can update product images"
   on storage.objects for update
@@ -57,6 +64,12 @@ create policy "admins can update product images"
   using (
     bucket_id = 'product-images'
     and public.is_admin()
+  )
+  with check (
+    bucket_id = 'product-images'
+    and public.is_admin()
+    and mimetype like 'image/%'
+    and size <= 5 * 1024 * 1024
   );
 
 drop policy if exists "admins can delete product images" on storage.objects;

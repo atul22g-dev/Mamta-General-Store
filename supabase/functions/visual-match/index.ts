@@ -229,6 +229,25 @@ Deno.serve(async (req: Request) => {
   const startTime = Date.now();
 
   try {
+    // --- AuthZ: caller must have a valid Supabase session (anon or authenticated) ---
+    // This prevents unauthenticated abuse while still allowing shop-floor scans.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return json({ error: 'Authentication required.' }, 401);
+    }
+
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+
+    const { error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      return json({ error: 'Invalid or expired session.' }, 401);
+    }
+
     const { image } = (await req.json()) as MatchRequest;
 
     // Validate input
@@ -263,12 +282,6 @@ Deno.serve(async (req: Request) => {
 
     // 2. Similarity search in Postgres (pgvector cosine distance)
     //    Fetch more candidates than needed for better product grouping
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-    );
-
     const { data, error } = await supabase.rpc('visual_search_matches', {
       query_embedding: queryVector,
       match_threshold: SIMILAR_PRODUCT_THRESHOLD, // Lower threshold to get more candidates
@@ -277,7 +290,7 @@ Deno.serve(async (req: Request) => {
 
     if (error) {
       console.error(`[visual-match] RPC error: ${error.message} (code=${error.code})`);
-      return json({ error: `Similarity search failed: ${error.message}` }, 500);
+      return json({ error: 'Similarity search failed. Please try again.' }, 500);
     }
 
     const rows = (data ?? []) as { product_id: string; image_id: string; similarity: number }[];
@@ -310,7 +323,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error(`[visual-match] Unhandled error: ${error instanceof Error ? error.message : error}`);
     return json(
-      { error: error instanceof Error ? error.message : 'Visual matching failed.' },
+      { error: 'Visual matching failed. Please try again.' },
       500,
     );
   }

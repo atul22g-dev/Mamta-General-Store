@@ -98,7 +98,8 @@ Deno.serve(async (req: Request) => {
 
     const { data: pending, error: fetchError } = await query;
     if (fetchError) {
-      return json({ error: `Could not list pending images: ${fetchError.message}` }, 500);
+      console.error(`[embed-product-image] Fetch error: ${fetchError.message}`);
+      return json({ error: 'Could not list pending images.' }, 500);
     }
 
     const images = (pending ?? []) as PendingImage[];
@@ -128,10 +129,11 @@ Deno.serve(async (req: Request) => {
             error: null as string | null,
           };
         } catch (error) {
+          console.error(`[embed-product-image] Download failed for ${image.id}: ${error instanceof Error ? error.message : error}`);
           return {
             id: image.id,
             dataUri: '',
-            error: error instanceof Error ? error.message : 'Download failed.',
+            error: 'Download failed.',
           };
         }
       }),
@@ -173,8 +175,9 @@ Deno.serve(async (req: Request) => {
       200,
     );
   } catch (error) {
+    console.error(`[embed-product-image] Unhandled error: ${error instanceof Error ? error.message : error}`);
     return json(
-      { error: error instanceof Error ? error.message : 'Embedding failed.' },
+      { error: 'Embedding generation failed. Please try again.' },
       500,
     );
   }
