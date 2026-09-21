@@ -4,19 +4,20 @@
  * The rest of the backend (edge functions) depends only on `embedImages()`;
  * this file selects the embedding provider:
  *
- *   1. Cohere `embed-v4.0` (DEFAULT) — the provider this project's
- *      pipeline was originally built and deployed with. Requires only the
- *      `COHERE_API_KEY` edge secret — no model files, no extra
- *      infrastructure. (No reference embeddings are stored yet, so this
- *      is also the provider all future embeddings will be indexed with.)
+ *   1. MobileCLIP-S0 (DEFAULT, free) — runs locally in the edge isolate
+ *      via onnxruntime-web (WASM) + the quantized MobileCLIP-S0 vision
+ *      tower from the HF Hub. NO API key, no secrets. Verified live
+ *      end-to-end (2026-09-22): ~1 s/image, 512-dim output.
  *
- *   2. MobileCLIP-S0 ONNX (opt-in via `EMBEDDING_PROVIDER=mobileclip-s0`)
- *      — free local inference, but requires a working `MODEL_URL` secret
- *      (public URL of the ~11.5 MB ONNX vision encoder). Keeping it behind
- *      an explicit opt-in prevents a silent switch to a model that was
- *      never verified end-to-end (no `models` bucket existed in this
- *      project's Storage when audited; the export script's dependencies
- *      are not installed).
+ *   2. Cohere `embed-v4.0` (opt-in) — HTTP API, requires the
+ *      `COHERE_API_KEY` edge secret. Never mix providers: search and
+ *      reference embeddings must come from the SAME model.
+ *
+ * CRITICAL COMPATIBILITY RULE: search embeddings and reference embeddings
+ * MUST come from the same provider. When switching providers you must:
+ *   1. clear every existing embedding (`clear_product_embeddings`, service role),
+ *   2. re-embed all reference images,
+ *   3. keep the output dimension equal to the pgvector column (`vector(512)`).
  *
  * CRITICAL COMPATIBILITY RULE: search embeddings and reference embeddings
  * MUST come from the same provider. When switching providers you must:
@@ -28,9 +29,9 @@
  * secrets — they never ship inside the Expo app.
  */
 
-import { embedWithMobileClip, initModelUrl } from './embedding-engine.ts';
+import { embedWithMobileClip } from './embedding-engine.ts';
 
-export const EMBEDDING_MODEL = 'embed-v4.0';
+export const EMBEDDING_MODEL = 'mobileclip-s0';
 /** Chosen output dimension — matches the pgvector column `vector(512)`. */
 export const EMBEDDING_DIMENSIONS = 512;
 
@@ -81,9 +82,10 @@ export function validateEmbeddingVector(
 }
 
 // ---------------------------------------------------------------------------
-// Cohere implementation (default provider)
+// Cohere implementation (opt-in provider)
 // ---------------------------------------------------------------------------
 
+const COHERE_MODEL = 'embed-v4.0';
 const COHERE_EMBED_URL = 'https://api.cohere.com/v2/embed';
 
 /** Formats the user-facing error for a Cohere API failure (no secrets). */
@@ -104,7 +106,7 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
 
     async embedImages(images: ImageDataUri[]): Promise<EmbeddingResult> {
       if (images.length === 0) {
-        return { vectors: [], model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS };
+        return { vectors: [], model: COHERE_MODEL, dimensions: EMBEDDING_DIMENSIONS };
       }
 
       const response = await fetch(COHERE_EMBED_URL, {
@@ -114,7 +116,7 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: EMBEDDING_MODEL,
+          model: COHERE_MODEL,
           input_type: 'image',
           embedding_types: ['float'],
           output_dimension: EMBEDDING_DIMENSIONS,
@@ -140,7 +142,7 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
         throw new Error(dimError);
       }
 
-      return { vectors, model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS };
+      return { vectors, model: COHERE_MODEL, dimensions: EMBEDDING_DIMENSIONS };
     },
   };
 }
@@ -152,15 +154,6 @@ function cohereProvider(apiKey: string): EmbeddingProvider {
 const MOBILECLIP_MODEL_NAME = 'mobileclip-s0';
 
 function mobileclipProvider(): EmbeddingProvider {
-  const modelUrl = Deno.env.get('MODEL_URL');
-  if (!modelUrl) {
-    throw new Error(
-      'MODEL_URL secret not configured for edge functions. ' +
-        'Set it via: supabase secrets set MODEL_URL=<storage-url>',
-    );
-  }
-  initModelUrl(modelUrl);
-
   return {
     name: MOBILECLIP_MODEL_NAME,
 
@@ -169,7 +162,16 @@ function mobileclipProvider(): EmbeddingProvider {
         return { vectors: [], model: MOBILECLIP_MODEL_NAME, dimensions: EMBEDDING_DIMENSIONS };
       }
 
-      const vectors = await embedWithMobileClip(images);
+      let vectors: number[][];
+      try {
+        vectors = await embedWithMobileClip(images);
+      } catch (error) {
+        // Distinguish model/inference failures from network/product failures
+        // so the caller can surface EMBEDDING_ERROR instead of a generic 500.
+        throw new Error(
+          `Embedding failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
       return { vectors, model: MOBILECLIP_MODEL_NAME, dimensions: EMBEDDING_DIMENSIONS };
     },
@@ -178,24 +180,24 @@ function mobileclipProvider(): EmbeddingProvider {
 
 /**
  * Resolves the active provider:
- *   • default  → Cohere embed-v4.0 (needs COHERE_API_KEY)
- *   • EMBEDDING_PROVIDER=mobileclip-s0 → local ONNX (needs MODEL_URL)
+ *   • default → MobileCLIP-S0 local WASM inference (free, no secrets)
+ *   • EMBEDDING_PROVIDER=cohere → Cohere embed-v4.0 (needs COHERE_API_KEY)
  * Throws with an actionable message when the required secret is missing.
  */
 export function getEmbeddingProvider(): EmbeddingProvider {
   const configured = Deno.env.get('EMBEDDING_PROVIDER')?.trim().toLowerCase();
 
-  if (configured === 'mobileclip-s0' || configured === 'mobileclip') {
-    return mobileclipProvider();
+  if (configured === 'cohere') {
+    const apiKey = Deno.env.get('COHERE_API_KEY');
+    if (!apiKey) {
+      throw new Error(
+        'COHERE_API_KEY is not configured for edge functions. ' +
+          'Set it via: supabase secrets set COHERE_API_KEY=<key>',
+      );
+    }
+    return cohereProvider(apiKey);
   }
 
   // Default (also when EMBEDDING_PROVIDER is unset or anything unexpected).
-  const apiKey = Deno.env.get('COHERE_API_KEY');
-  if (!apiKey) {
-    throw new Error(
-      'COHERE_API_KEY is not configured for edge functions. ' +
-        'Set it via: supabase secrets set COHERE_API_KEY=<key>',
-    );
-  }
-  return cohereProvider(apiKey);
+  return mobileclipProvider();
 }

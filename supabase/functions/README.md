@@ -17,11 +17,12 @@ these functions with its publishable anon key.
 supabase login
 supabase link --project-ref YOUR-REF
 
-# The embedding provider secret (see “Provider” below):
-supabase secrets set COHERE_API_KEY=your-key
-# Optional (only for the free local-model path):
-# supabase secrets set EMBEDDING_PROVIDER=mobileclip-s0
-# supabase secrets set MODEL_URL=<public-url-of-mobileclip.onnx>
+# The embedding provider secret (see “Provider” below).
+# The DEFAULT provider (MobileCLIP-S0, free, self-hosted in the function)
+# needs NO secret at all. Only set COHERE_API_KEY if you switch to Cohere:
+# supabase secrets set COHERE_API_KEY=your-key
+# Optional model override for the default free path:
+# supabase secrets set MOBILECLIP_MODEL_URL=<public-url-of-512dim-vision.onnx>
 # Optional tuning (defaults shown):
 # supabase secrets set MAIN_MATCH_THRESHOLD=0.90
 # supabase secrets set SIMILAR_PRODUCT_THRESHOLD=0.75
@@ -42,25 +43,29 @@ injected automatically by the platform.
 other AI operation. The provider is selected by the `EMBEDDING_PROVIDER`
 edge secret:
 
-1. **Cohere `embed-v4.0` (DEFAULT)** — `_shared/embedding.ts` wraps
-   Cohere `embed-v4.0` at **512 dimensions** (`input_type: "image"`,
-   data-URI inputs), verified to match the pgvector column `vector(512)`
-   exactly — a runtime guard in the same file fails loudly if a response
-   ever arrives with a different dimension (no silent truncation/padding).
-   This is the provider the pipeline was originally built and deployed
-   with; all reference embeddings should be indexed with it.
+1. **MobileCLIP-S0 (DEFAULT, free)** — `_shared/embedding-engine.ts` runs
+   the quantized MobileCLIP-S0 vision tower (`Xenova/mobileclip_s0` on the
+   HF Hub, 11.8 MB) **inside the edge function** via `onnxruntime-web`
+   (WASM from esm.sh). No API key, no native addons. Verified live
+   end-to-end (2026-09-22): ~1 s inference per image, 512-dim output
+   matching the pgvector column `vector(512)`. Requires no secrets.
 
-2. **MobileCLIP-S0 ONNX (opt-in)** — set `EMBEDDING_PROVIDER=mobileclip-s0`
-   and `MODEL_URL=<public ONNX url>` to run the free local vision encoder
-   (`_shared/embedding-engine.ts`). Only enable it after the model file is
-   uploaded and verified — and then **re-embed every reference image**
-   (embeddings from different models are not comparable).
+2. **Cohere `embed-v4.0` (opt-in)** — set `EMBEDDING_PROVIDER=cohere`
+   and `COHERE_API_KEY=<key>`; `_shared/embedding.ts` selects it.
+   Both providers output 512-dim L2-normalized vectors, but they are
+   **different models**: embeddings are not comparable across providers.
+   Never mix: after switching providers, clear and re-embed all reference
+   images before searching.
 
 To swap providers (OpenAI, self-hosted CLIP, …):
 
 1. Implement `EmbeddingProvider` in `_shared/embedding.ts`.
 2. Keep the output dimension equal to the pgvector column (`vector(512)`)
    and update `EMBEDDING_DIMENSIONS` + the column together.
+   (Platform notes: onnxruntime-node is a native addon and cannot run on
+   Supabase Edge; transformers.js exceeds the deploy-time bundler — use
+   `onnxruntime-web` from esm.sh + a plain ONNX from the HF Hub, as the
+   default engine does.)
 3. **Clear and regenerate every stored reference embedding** — search and
    reference embeddings must come from the same model.
 4. Redeploy both functions. The app and the RPC need no changes.

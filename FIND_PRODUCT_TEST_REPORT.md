@@ -18,29 +18,32 @@
 
 ## 2. Live-backend probes (executed against the real project)
 
-| # | Probe | Before fix | After fix (expected) |
-|---|---|---|---|
-| P1 | `POST /functions/v1/visual-match` empty body, publishable key | `400 "A data-URI product photo is required."` (old build) | `400 "A data-URI product photo is required (png/jpeg)."` — proves new build |
-| P2 | `POST …/visual-match` valid image, **anonymous** (no session) | **`500 "COHERE_API_KEY is not configured…"`** | `200` (identified/uncertain/no-match) once `COHERE_API_KEY` secret is set — publishable-key callers now pass the gate |
-| P3 | `POST …/visual-match` valid image, **signed-in staff JWT** | same 500 | `200` (JWT path validated via `auth.getUser`) |
-| P4 | `POST /rest/v1/rpc/visual_search_matches` (512-dim test vector) | `[]` (works, pre-0009 definition) | `[]` with `is_active` JOIN applied |
-| P5 | `GET /rest/v1/products?select=is_active` | **`42703 column does not exist`** | column exists after `fix-visual-search-schema.sql` |
-| P6 | `GET /rest/v1/product_images?select=image_type` | **`42703 column does not exist`** | column exists after fix |
-| P7 | Embedding coverage SQL (`count(embedding)`) | 1 image, 0 embedded | 1 image, 1 embedded after admin re-save/backfill |
+> **Final status (2026-09-22, post-deploy): the whole chain is LIVE and PASSING.**
+> Migrations 0001–0010 applied via `supabase db push` (0007 fixed for the modern storage
+> schema, 0008/0009 operator resolution fixed); both functions deployed; the free
+> MobileCLIP-S0 provider verified running inside the edge isolate (~1 s/image); the pending
+> product image backfilled in-edge; end-to-end anonymous search returned
+> `HTTP 200 {status: "identified", confidence: 1.0}` on the product's own photo.
 
-P2's residual gate is an **ops action, not a code action**: `supabase secrets set COHERE_API_KEY=…`
-then `npm run db:deploy`. The pipeline cannot be end-to-end "PASS" from the repo alone because the
-embedding provider secret lives only in the Supabase project.
+| # | Probe | Before fix | After fix (live result) |
+|---|---|---|---|
+| P1 | `POST /functions/v1/visual-match` empty body, publishable key | `400 "A data-URI product photo is required."` (old build) | ✅ `400 "…required (png/jpeg)."` — new build confirmed |
+| P2 | `POST …/visual-match` valid image, **anonymous** (no session) | **`500 "COHERE_API_KEY is not configured…"`** | ✅ `HTTP 200 {"status":"identified","confidence":1}` with the product's own photo — no API key needed (free MobileCLIP-S0 in-edge) |
+| P3 | `POST …/visual-match` valid image, **signed-in staff JWT** | same 500 | code path unchanged (JWT validated via `auth.getUser`); anonymous path proven live |
+| P4 | `POST /rest/v1/rpc/visual_search_matches` (512-dim test vector) | `[]` (works, pre-0009 definition) | ✅ RPC executes on the 0009 definition (returns matches with real vectors) |
+| P5 | `GET /rest/v1/products?select=is_active` | **`42703 column does not exist`** | ✅ column exists (`supabase migration list`: 0001–0010 applied) |
+| P6 | `GET /rest/v1/product_images?select=image_type` | **`42703 column does not exist`** | ✅ column exists |
+| P7 | Embedding coverage SQL (`count(embedding)`) | 1 image, 0 embedded | ✅ 1 image, 1 embedded (in-edge backfill using the exact search engine) |
 
 ## 3. Scenario matrix (A–O)
 
-Status legend: ✅ verified · 🔧 fixed by this change · ⏳ deploy-gated (code verified, needs
-secret/deploy/backfill to run live) · ✅(logic) verified at logic level by unit tests.
+Status legend: ✅ verified · 🔧 fixed by this change · ⏳ needs real store photos (code live and
+unit-verified) · ✅(logic) verified at logic level by unit tests.
 
 | Scenario | Path exercised | Status | Evidence |
 |---|---|---|---|
-| **A. Exact same product image** | embed → RPC top-1 → fetch product → price | ⏳ | code path unit-verified (wire contract + grouping logic); live P2 pending secret; RPC probe P4 OK |
-| **B. Different photo of same product** | same | ⏳ | same + threshold tuning doc (MAIN 0.90) |
+| **A. Exact same product image** | embed → RPC top-1 → fetch product → price | ✅ | **verified live**: anonymous `visual-match` on the product's own photo → `identified`, confidence 1.0, correct product_id |
+| **B. Different photo of same product** | same | ⏳ | pipeline live end-to-end (A verified); quality depends on real photos + threshold tuning (MAIN 0.90) |
 | **C. Different angle** | same | ⏳ | same; below-MAIN → `uncertain` list path unit-covered |
 | **D. Cropped product** | same | ⏳ | same |
 | **E. Low-quality image** | small/blurry JPEG | ✅(logic) pipeline accepts valid JPEG; embedding quality decides match | image-pipeline tests 23/23 |
@@ -72,8 +75,5 @@ secret/deploy/backfill to run live) · ✅(logic) verified at logic level by uni
 
 - End-to-end image-match accuracy (A–D) needs real store photos to tune thresholds
   (secrets are documented in `supabase/functions/README.md`).
-- The MobileCLIP-S0 free path remains opt-in until a model artifact is produced/uploaded and
-  verified; until then the default Cohere provider requires `COHERE_API_KEY`.
-- If the user is signed in, supabase-js sends the session JWT as Authorization — that path is
-  validated by `auth.getUser`; if a key format other than `sb_publishable_…`/legacy anon JWT is
-  configured, the edge gate's exact-match against `SUPABASE_ANON_KEY` should be revisited.
+- If a key format other than `sb_publishable_…`/legacy anon JWT is configured, the edge gate's
+  exact-match against `SUPABASE_ANON_KEY` should be revisited.

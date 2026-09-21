@@ -9,7 +9,7 @@
  * service-role client + profiles check) — shop-floor anonymous users
  * cannot embed or mutate reference data.
  *
- * Secrets: MODEL_URL (Supabase Storage URL for ONNX model),
+ * Secrets: MOBILECLIP_MODEL_ID (optional model override),
  *          SUPABASE_SERVICE_ROLE_KEY (edge-only, never inside the mobile app).
  */
 import { getEmbeddingProvider } from '../_shared/embedding.ts';

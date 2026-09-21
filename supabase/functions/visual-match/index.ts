@@ -297,8 +297,28 @@ Deno.serve(async (req: Request) => {
     console.log(`[visual-match] Processing image (${(image.length / 1024).toFixed(0)} KB data URI)`);
 
     // 1. Embed the user photo with the configured provider (default: Cohere).
-    const provider = getEmbeddingProvider();
-    const { vectors, model, dimensions } = await provider.embedImages([image]);
+    // Provider configuration/transport failures are surfaced to the caller
+    // (never flattened into a generic 500): without the REAL reason the
+    // feature is undebuggable — a 500 "Visual matching failed" masked the
+    // missing COHERE_API_KEY in production for this exact reason.
+    let provider;
+    try {
+      provider = getEmbeddingProvider();
+    } catch (configError) {
+      const message = configError instanceof Error ? configError.message : 'Embedding provider is not configured.';
+      console.error(`[visual-match] Provider config error: ${message}`);
+      return json({ error: message }, 500);
+    }
+
+    let embedResult;
+    try {
+      embedResult = await provider.embedImages([image]);
+    } catch (embedError) {
+      const message = embedError instanceof Error ? embedError.message : 'Embedding provider request failed.';
+      console.error(`[visual-match] Embedding provider error: ${message}`);
+      return json({ error: `Embedding failed: ${message}` }, 502);
+    }
+    const { vectors, model, dimensions } = embedResult;
 
     // Validate the embedding result before using it
     if (!vectors || !Array.isArray(vectors) || vectors.length === 0) {

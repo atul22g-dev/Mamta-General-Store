@@ -166,6 +166,32 @@ and config files were verified as referenced/required and kept.
     → product_images.embedding (vector(512), same model as search)
 ```
 
+## Live deployment (2026-09-22 — final state)
+
+The fixes are not just merged in the repo — they are **deployed and verified on the live
+Supabase project**:
+
+1. **Database**: migrations 0001–0010 applied via `supabase db push`. Two migrations were
+   unappliable as written and were fixed in the repo first: 0007 (storage policies referenced
+   the removed `mimetype`/`size` columns — modern Supabase keeps them inside `metadata` jsonb)
+   and 0008/0009 (the RPC pinned `operator(pg_catalog.<=>)`, but pgvector is installed in
+   `public`/`extensions` on real projects — the "hardened" RPC was unexecutable everywhere;
+   now resolves via `search_path`).
+2. **Edge functions**: `visual-match` + `embed-product-image` deployed.
+3. **Embedding provider**: the **free MobileCLIP-S0 path is now the default and works on
+   Supabase Edge** — `onnxruntime-web` (WASM via esm.sh) + the 11.8 MB quantized
+   `Xenova/mobileclip_s0` vision tower from the HF Hub, ~1 s/image, 512-dim output. No API
+   keys, no secrets. (Dead ends proven live: onnxruntime-node = native addon → cannot run;
+   transformers.js npm graph → deploy-time bundler 500; CDN builds → worker crash.)
+   Cohere remains available via `EMBEDDING_PROVIDER=cohere` + `COHERE_API_KEY`.
+4. **Reference indexing**: the one pending product image was backfilled in-edge with the
+   same engine the search uses.
+5. **End-to-end proof**: anonymous `POST /functions/v1/visual-match` with the product's own
+   photo (no Authorization header beyond the publishable key) →
+   `HTTP 200 {"status":"identified","confidence":1.0, product_id: cef35945-…}` — the
+   Smily Face Ball (₹18 from the DB) is found by photo. RPC, vector search, product fetch,
+   and price display are the unchanged repo code paths.
+
 ## Commits
 
 1. `fix: diagnose and repair find product` — edge functions, auth contract, docs/audit/root-cause/db-fix/test-report/final-report + SQL repair

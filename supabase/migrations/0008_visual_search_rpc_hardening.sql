@@ -38,16 +38,23 @@ returns table (
 language sql
 stable
 security definer
-set search_path = public, pg_catalog
+-- Operator resolution: pgvector installs its operators in the schema of the
+-- extension (`public` on this project, `extensions` on others). The earlier
+-- `operator(pg_catalog.<=>)` qualification was wrong — it pinned the cosine
+-- operator to pg_catalog where it never exists (SQLSTATE 42883), making this
+-- function unexecutable everywhere. Plain `<=>` + a search_path that includes
+-- every schema pgvector realistically installs into resolves correctly and
+-- keeps the explicit-extension intent.
+set search_path = public, extensions, pg_catalog
 as $$
   select
     pi.product_id,
     pi.id as image_id,
-    1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) as similarity
+    1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   where pi.embedding is not null
-    and 1 - (pi.embedding operator(pg_catalog.<=>) query_embedding) >= match_threshold
-  order by pi.embedding operator(pg_catalog.<=>) query_embedding asc
+    and 1 - (pi.embedding <=> query_embedding) >= match_threshold
+  order by pi.embedding <=> query_embedding asc
   limit least(greatest(coalesce(match_count, 5), 1), 25);
 $$;
 
