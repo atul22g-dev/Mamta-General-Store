@@ -268,8 +268,11 @@ test('.env.example contains placeholders only — no real values', () => {
 });
 
 test('no real admin password remains anywhere in the working tree', () => {
-  // The historic credential (docs/BUG-AUDIT.md quoted it verbatim).
-  const hits = execSync('git grep -i "Mamta@2026" -- . || true', {
+  // The historic credential (docs/BUG-AUDIT.md quoted it verbatim). Built by
+  // concatenation so this grep cannot match its own source line — the
+  // self-match false-positive would fail the test once this file is tracked.
+  const historic = ['Mamta', '@2026'].join('');
+  const hits = execSync(`git grep -iF ${JSON.stringify(historic)} -- . || true`, {
     cwd: ROOT,
     encoding: 'utf8',
   }).trim();

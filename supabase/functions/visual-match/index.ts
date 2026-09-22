@@ -194,6 +194,10 @@ function groupByProduct(rows: ImageCandidate[]): ProductResult[] {
  * - Similar products: above SIMILAR_PRODUCT_THRESHOLD, excluding main
  * - No-confidence: below threshold shows "not recognized" + similar options
  */
+// Exported for the Node decision-logic tests (tests/edge-match-logic.test.mjs);
+// runtime behavior is unchanged. groupByProduct is exported for the same tests.
+export { determineMatch, groupByProduct, parseStoredEmbedding };
+
 function determineMatch(products: ProductResult[]): {
   status: 'identified' | 'uncertain' | 'no-match';
   confidence: number;

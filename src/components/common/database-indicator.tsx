@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -10,7 +10,7 @@ import Animated, {
 
 import { Icon } from '@/components/common/icon';
 import { ThemedText } from '@/components/common/themed-text';
-import { Spacing, Radius, Shadows } from '@/constants';
+import { Motion, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import type { DatabaseHealthStatus } from '@/hooks/use-database-health';
 
@@ -127,10 +127,24 @@ export function DatabaseIndicator({
   const online = status === 'online';
   const quality = online ? latencyLabel(latencyMs) : null;
 
-  const press = useSharedValue(1);
+  // Press feedback WITHOUT touching the JS thread per frame: `pressed` is a
+  // boolean shared value flipped by the WORKLETIZED handlers below, and the
+  // scale is DERIVED on the UI thread with withTiming — so the animation and
+  // its input both live off the JS thread (this replaced press.set(0.96/1)
+  // inline handlers, which animated from JavaScript and could stutter).
+  const pressed = useSharedValue(false);
   const pressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: press.get() }],
+    transform: [{ scale: withTiming(pressed.get() ? 0.96 : 1, { duration: Motion.fast }) }],
   }));
+
+  const handlePressIn = useCallback(() => {
+    'worklet';
+    pressed.set(true);
+  }, [pressed]);
+  const handlePressOut = useCallback(() => {
+    'worklet';
+    pressed.set(false);
+  }, [pressed]);
 
   const body = (
     <Animated.View
@@ -165,8 +179,8 @@ export function DatabaseIndicator({
         accessibilityRole="button"
         accessibilityLabel={`${accessibility} — tap for details`}
         onPress={onPress}
-        onPressIn={() => press.set(0.96)}
-        onPressOut={() => press.set(1)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         style={styles.pressArea}>
         {body}
       </Pressable>

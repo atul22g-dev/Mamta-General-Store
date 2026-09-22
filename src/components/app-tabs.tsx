@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, type IconName } from '@/components/common/icon';
 import { ThemedText } from '@/components/common/themed-text';
 
-import { Spacing } from '@/constants/theme';
+import { Spacing, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function AppTabs() {
@@ -39,6 +39,8 @@ function TabButton({ icon, label, isFocused, ...props }: TabButtonProps & TabTri
   return (
     <Pressable {...props} style={({ pressed }) => [
       styles.tabButton,
+      // Active pill matches the web tab bar's selected state (consistency).
+      isFocused && { backgroundColor: theme.accentSoft },
       pressed && styles.pressed,
     ]}>
       {/* Explicit theme colors — 'currentColor' is a CSS-only value and does
@@ -74,7 +76,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.full,
     gap: Spacing.one,
   },
   pressed: {

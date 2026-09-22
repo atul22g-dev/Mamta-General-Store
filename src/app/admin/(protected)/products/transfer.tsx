@@ -9,12 +9,12 @@
  *           would change — new / updated / unchanged / skipped — and only
  *           written after they press the button.
  *
- * Rules, parsing and validation live in lib/products/product-transfer.ts
- * (unit-tested); database access in product-transfer-service.ts; the file
- * picker and share sheet in transfer-file.ts. This screen owns nothing but
- * state and presentation, which is why it reads as a list of decisions.
+ * Rules, parsing and validation live in product-transfer-rules.ts
+ * (unit-tested); database access in product-transfer.service.ts; the file
+ * picker and share sheet in transfer-file.ts; ALL state and async actions
+ * live in the useProductTransfer hook (Screen → Hook → Service). The screen
+ * is a pure view: it routes props into two focused cards and nothing else.
  */
-import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,21 +26,17 @@ import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Radius, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { alert } from '@/utils/alert';
-import { describePlan, describeRow, type ExportFormat, type ImportPlan } from '@/services/product-transfer-rules';
+import { useProductTransfer, type ImportPhase } from '@/hooks/use-product-transfer';
 import {
-  applyImportPlan,
-  exportCatalog,
-  exportEmptyTemplate,
-  readImportPlan,
-  type ImportOutcome,
-} from '@/services/product-transfer.service';
-import { pickTransferFile, saveTransferFile } from '@/utils/transfer-file';
+  describePlan,
+  describeRow,
+  type ExportFormat,
+  type ImportPlan,
+} from '@/services/product-transfer-rules';
+import type { ImportOutcome } from '@/services/product-transfer.service';
 
 /** Preview rows rendered at once — a 400-row file must not lock the phone. */
 const PREVIEW_LIMIT = 40;
-
-type ImportPhase = 'idle' | 'picking' | 'preview' | 'applying' | 'done';
 
 /** One line of the preview list: what will happen, and why. */
 function PreviewRow({ plan, index }: { plan: ImportPlan; index: number }) {
@@ -131,112 +127,198 @@ function OutcomePanel({ outcome }: { outcome: ImportOutcome }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// The two jobs, as two focused cards
+// ---------------------------------------------------------------------------
+
+/** Export: format choice, template, and the share sheet hand-off. */
+function ExportCard({
+  format,
+  exporting,
+  exportMessage,
+  busy,
+  onFormatChange,
+  onExport,
+}: {
+  format: ExportFormat;
+  exporting: boolean;
+  exportMessage: string | null;
+  busy: boolean;
+  onFormatChange: (format: ExportFormat) => void;
+  onExport: (empty: boolean) => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Card padding="normal">
+      <View style={styles.sectionHeader}>
+        <Icon name="cloud-download-outline" size={20} color={theme.accent} />
+        <ThemedText type="h3">Export products</ThemedText>
+      </View>
+      <ThemedText type="bodySmall" themeColor="textSecondary">
+        Every product, including hidden ones. Prices and stock are editable in the file.
+      </ThemedText>
+
+      <View style={styles.formatRow}>
+        {(['csv', 'json'] as const).map((option) => (
+          <Button
+            key={option}
+            title={option === 'csv' ? 'CSV (spreadsheet)' : 'JSON (backup)'}
+            variant={format === option ? 'primary' : 'secondary'}
+            size="sm"
+            onPress={() => onFormatChange(option)}
+          />
+        ))}
+      </View>
+
+      <ThemedText type="caption" themeColor="textTertiary">
+        {format === 'csv'
+          ? 'CSV opens in Excel or Google Sheets. Edit prices and stock, then import it back.'
+          : 'JSON is a full backup: it also keeps internal ids and timestamps.'}
+      </ThemedText>
+
+      <Button
+        title={exporting ? 'Preparing file…' : 'Export catalog'}
+        icon={<Icon name="download-outline" size={18} color={theme.white} />}
+        onPress={() => onExport(false)}
+        disabled={busy}
+        block
+      />
+      <Button
+        title="Download a blank template"
+        variant="tertiary"
+        size="sm"
+        onPress={() => onExport(true)}
+        disabled={busy}
+      />
+
+      {exportMessage && (
+        <View style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
+          <Icon name="checkmark-circle" size={16} color={theme.success} />
+          <ThemedText type="caption" style={[styles.noticeText, { color: theme.text }]}>
+            {exportMessage}
+          </ThemedText>
+        </View>
+      )}
+    </Card>
+  );
+}
+
+/** Import: file choice, the change preview, confirm/cancel, and the outcome. */
+function ImportCard({
+  phase,
+  busy,
+  fileName,
+  plan,
+  outcome,
+  importError,
+  writableCount,
+  onChooseFile,
+  onCancel,
+  onConfirm,
+  onDone,
+}: {
+  phase: ImportPhase;
+  busy: boolean;
+  fileName: string | null;
+  plan: ImportPlan | null;
+  outcome: ImportOutcome | null;
+  importError: string | null;
+  writableCount: number;
+  onChooseFile: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onDone: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Card padding="normal">
+      <View style={styles.sectionHeader}>
+        <Icon name="cloud-upload-outline" size={20} color={theme.accent} />
+        <ThemedText type="h3">Import products</ThemedText>
+      </View>
+      <ThemedText type="bodySmall" themeColor="textSecondary">
+        Products are matched by name: a name already in the catalog updates that product, a
+        new name is added. Nothing is written until you confirm.
+      </ThemedText>
+
+      <Button
+        title={phase === 'picking' ? 'Opening…' : 'Choose a file'}
+        variant="secondary"
+        icon={<Icon name="document-text-outline" size={18} color={theme.accent} />}
+        onPress={onChooseFile}
+        disabled={busy}
+        block
+      />
+
+      {importError && (
+        <View style={[styles.notice, { backgroundColor: theme.surfaceSecondary }]}>
+          <Icon name="alert-circle" size={16} color={theme.warning} />
+          <ThemedText type="caption" themeColor="textSecondary" style={styles.noticeText}>
+            {importError}
+          </ThemedText>
+        </View>
+      )}
+
+      {fileName && phase !== 'done' && (
+        <ThemedText type="caption" themeColor="textTertiary">
+          {fileName}
+        </ThemedText>
+      )}
+
+      {plan && phase === 'preview' && (
+        <View style={styles.preview}>
+          <ThemedText type="bodySmall">
+            {describePlan(plan)} — {plan.rows.length} row{plan.rows.length === 1 ? '' : 's'} read
+          </ThemedText>
+
+          <View style={styles.previewList}>
+            {plan.rows.slice(0, PREVIEW_LIMIT).map((_, index) => (
+              <PreviewRow key={`${plan.rows[index].line}-${index}`} plan={plan} index={index} />
+            ))}
+          </View>
+
+          {plan.rows.length > PREVIEW_LIMIT && (
+            <ThemedText type="caption" themeColor="textTertiary">
+              Showing the first {PREVIEW_LIMIT} of {plan.rows.length} rows.
+            </ThemedText>
+          )}
+
+          <Button
+            title={
+              writableCount === 0
+                ? 'Nothing to import'
+                : `Import ${writableCount} product${writableCount === 1 ? '' : 's'}`
+            }
+            onPress={onConfirm}
+            disabled={writableCount === 0}
+            block
+          />
+          <Button title="Cancel" variant="ghost" onPress={onCancel} block />
+        </View>
+      )}
+
+      {phase === 'applying' && (
+        <ThemedText type="bodySmall" themeColor="textSecondary">
+          Importing…
+        </ThemedText>
+      )}
+
+      {outcome && <OutcomePanel outcome={outcome} />}
+
+      {outcome && (
+        <Button title="Done" variant="secondary" onPress={onDone} block />
+      )}
+    </Card>
+  );
+}
+
+/** The screen: two cards over one shared state hook. */
 export default function AdminProductTransferScreen() {
   const router = useRouter();
   const theme = useTheme();
-
-  const [format, setFormat] = useState<ExportFormat>('csv');
-  const [exporting, setExporting] = useState(false);
-  const [exportMessage, setExportMessage] = useState<string | null>(null);
-
-  const [phase, setPhase] = useState<ImportPhase>('idle');
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [plan, setPlan] = useState<ImportPlan | null>(null);
-  const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-
-  const busy = exporting || phase === 'picking' || phase === 'applying';
-
-  // --- Export --------------------------------------------------------------
-  const runExport = useCallback(
-    async (empty: boolean) => {
-      if (busy) return;
-      setExporting(true);
-      setExportMessage(null);
-
-      const exported = empty ? await exportEmptyTemplate() : await exportCatalog(format);
-
-      if (!exported.ok) {
-        setExporting(false);
-        alert('Export failed', exported.error);
-        return;
-      }
-
-      const saved = await saveTransferFile(exported.data);
-      setExporting(false);
-
-      if (!saved.ok) {
-        alert('Could not hand over the file', saved.error);
-        return;
-      }
-
-      setExportMessage(
-        empty
-          ? 'Template ready — fill in one row per product and import it back.'
-          : `${exported.data.count} product${exported.data.count === 1 ? '' : 's'} exported. ${saved.data}`,
-      );
-    },
-    [busy, format],
-  );
-
-  // --- Import: choose + plan ----------------------------------------------
-  const chooseFile = useCallback(async () => {
-    if (busy) return;
-    setPhase('picking');
-    setImportError(null);
-    setOutcome(null);
-
-    const picked = await pickTransferFile();
-    if (!picked.ok) {
-      setPhase('idle');
-      alert('Could not open that file', picked.error);
-      return;
-    }
-    if (picked.data === null) {
-      setPhase('idle'); // cancelled — not an error
-      return;
-    }
-
-    const planned = await readImportPlan(picked.data.text, picked.data.name);
-    if (!planned.ok) {
-      setPhase('idle');
-      setImportError(planned.error);
-      setFileName(picked.data.name);
-      return;
-    }
-
-    setFileName(picked.data.name);
-    setPlan(planned.data.plan);
-    setPhase('preview');
-  }, [busy]);
-
-  const cancelImport = useCallback(() => {
-    setPlan(null);
-    setFileName(null);
-    setOutcome(null);
-    setImportError(null);
-    setPhase('idle');
-  }, []);
-
-  // --- Import: apply -------------------------------------------------------
-  const confirmImport = useCallback(async () => {
-    if (!plan || phase === 'applying') return;
-    setPhase('applying');
-
-    const applied = await applyImportPlan(plan);
-
-    if (!applied.ok) {
-      setPhase('preview');
-      alert('Import failed', applied.error);
-      return;
-    }
-
-    setOutcome(applied.data);
-    setPlan(null);
-    setPhase('done');
-  }, [plan, phase]);
-
-  const writableCount = plan?.writable.length ?? 0;
+  const transfer = useProductTransfer();
 
   return (
     <ThemedView style={styles.container}>
@@ -252,146 +334,31 @@ export default function AdminProductTransferScreen() {
           contentContainerStyle={[styles.content, styles.gutter]}
           showsVerticalScrollIndicator={false}>
 
-          {/* ------------------------------ EXPORT -------------------------- */}
-          <Card padding="normal">
-            <View style={styles.sectionHeader}>
-              <Icon name="cloud-download-outline" size={20} color={theme.accent} />
-              <ThemedText type="h3">Export products</ThemedText>
-            </View>
-            <ThemedText type="bodySmall" themeColor="textSecondary">
-              Every product, including hidden ones. Prices and stock are editable in the file.
-            </ThemedText>
+          <ExportCard
+            format={transfer.format}
+            exporting={transfer.exporting}
+            exportMessage={transfer.exportMessage}
+            busy={transfer.busy}
+            onFormatChange={transfer.setFormat}
+            onExport={(empty) => void transfer.runExport(empty)}
+          />
 
-            <View style={styles.formatRow}>
-              {(['csv', 'json'] as const).map((option) => (
-                <Button
-                  key={option}
-                  title={option === 'csv' ? 'CSV (spreadsheet)' : 'JSON (backup)'}
-                  variant={format === option ? 'primary' : 'secondary'}
-                  size="sm"
-                  onPress={() => setFormat(option)}
-                />
-              ))}
-            </View>
-
-            <ThemedText type="caption" themeColor="textTertiary">
-              {format === 'csv'
-                ? 'CSV opens in Excel or Google Sheets. Edit prices and stock, then import it back.'
-                : 'JSON is a full backup: it also keeps internal ids and timestamps.'}
-            </ThemedText>
-
-            <Button
-              title={exporting ? 'Preparing file…' : 'Export catalog'}
-              icon={<Icon name="download-outline" size={18} color={theme.white} />}
-              onPress={() => void runExport(false)}
-              disabled={busy}
-              block
-            />
-            <Button
-              title="Download a blank template"
-              variant="tertiary"
-              size="sm"
-              onPress={() => void runExport(true)}
-              disabled={busy}
-            />
-
-            {exportMessage && (
-              <View style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
-                <Icon name="checkmark-circle" size={16} color={theme.success} />
-                <ThemedText type="caption" style={[styles.noticeText, { color: theme.text }]}>
-                  {exportMessage}
-                </ThemedText>
-              </View>
-            )}
-          </Card>
-
-          {/* ------------------------------ IMPORT -------------------------- */}
-          <Card padding="normal">
-            <View style={styles.sectionHeader}>
-              <Icon name="cloud-upload-outline" size={20} color={theme.accent} />
-              <ThemedText type="h3">Import products</ThemedText>
-            </View>
-            <ThemedText type="bodySmall" themeColor="textSecondary">
-              Products are matched by name: a name already in the catalog updates that product, a
-              new name is added. Nothing is written until you confirm.
-            </ThemedText>
-
-            <Button
-              title={phase === 'picking' ? 'Opening…' : 'Choose a file'}
-              variant="secondary"
-              icon={<Icon name="document-text-outline" size={18} color={theme.accent} />}
-              onPress={() => void chooseFile()}
-              disabled={busy}
-              block
-            />
-
-            {importError && (
-              <View style={[styles.notice, { backgroundColor: theme.surfaceSecondary }]}>
-                <Icon name="alert-circle" size={16} color={theme.warning} />
-                <ThemedText type="caption" themeColor="textSecondary" style={styles.noticeText}>
-                  {importError}
-                </ThemedText>
-              </View>
-            )}
-
-            {fileName && phase !== 'done' && (
-              <ThemedText type="caption" themeColor="textTertiary">
-                {fileName}
-              </ThemedText>
-            )}
-
-            {plan && phase === 'preview' && (
-              <View style={styles.preview}>
-                <ThemedText type="bodySmall">
-                  {describePlan(plan)} — {plan.rows.length} row{plan.rows.length === 1 ? '' : 's'} read
-                </ThemedText>
-
-                <View style={styles.previewList}>
-                  {plan.rows.slice(0, PREVIEW_LIMIT).map((_, index) => (
-                    <PreviewRow key={`${plan.rows[index].line}-${index}`} plan={plan} index={index} />
-                  ))}
-                </View>
-
-                {plan.rows.length > PREVIEW_LIMIT && (
-                  <ThemedText type="caption" themeColor="textTertiary">
-                    Showing the first {PREVIEW_LIMIT} of {plan.rows.length} rows.
-                  </ThemedText>
-                )}
-
-                <Button
-                  title={
-                    writableCount === 0
-                      ? 'Nothing to import'
-                      : `Import ${writableCount} product${writableCount === 1 ? '' : 's'}`
-                  }
-                  onPress={() => void confirmImport()}
-                  disabled={writableCount === 0}
-                  block
-                />
-                <Button title="Cancel" variant="ghost" onPress={cancelImport} block />
-              </View>
-            )}
-
-            {phase === 'applying' && (
-              <ThemedText type="bodySmall" themeColor="textSecondary">
-                Importing…
-              </ThemedText>
-            )}
-
-            {outcome && <OutcomePanel outcome={outcome} />}
-
-            {outcome && (
-              <Button
-                title="Done"
-                variant="secondary"
-                onPress={() => {
-                  cancelImport();
-                  router.back();
-                }}
-                block
-              />
-            )}
-          </Card>
+          <ImportCard
+            phase={transfer.phase}
+            busy={transfer.busy}
+            fileName={transfer.fileName}
+            plan={transfer.plan}
+            outcome={transfer.outcome}
+            importError={transfer.importError}
+            writableCount={transfer.writableCount}
+            onChooseFile={() => void transfer.chooseFile()}
+            onCancel={transfer.reset}
+            onConfirm={() => void transfer.confirmImport()}
+            onDone={() => {
+              transfer.reset();
+              router.back();
+            }}
+          />
 
           {/* ------------------------------ HELP ---------------------------- */}
           <View style={[styles.help, { borderColor: theme.border }]}>

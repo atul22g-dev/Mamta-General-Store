@@ -1,5 +1,16 @@
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useReducedMotion,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withDelay,
+  Easing,
+} from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 
 import { Icon, type IconName } from '@/components/common/icon';
@@ -8,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/common/themed-text';
 import { ThemedView } from '@/components/common/themed-view';
 import { useGalleryPick } from '@/hooks/use-gallery-pick';
-import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
+import { MaxContentWidth, Motion, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
 const TIPS = [
@@ -16,6 +27,34 @@ const TIPS = [
   { icon: 'scan', text: 'Fill the frame' },
   { icon: 'finger-print', text: 'Hold steady' },
 ] as const satisfies readonly { icon: IconName; text: string }[];
+
+/** Slow ambient sweep of the viewfinder's scan line. Skipped under
+ *  reduced motion: the line stays as a static center hint. */
+function ScanLine({ color }: { color: string }) {
+  const reducedMotion = useReducedMotion();
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    if (reducedMotion) return;
+    progress.set(
+      withDelay(
+        400,
+        withRepeat(withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }), -1, true),
+      ),
+    );
+  }, [progress, reducedMotion]);
+
+  const sweep = useAnimatedStyle(() => ({
+    // Pixel offset from the top bracket line — deterministic, no percent math.
+    transform: [{ translateY: progress.get() * 130 }],
+  }));
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Animated.View style={[styles.scanLine, { backgroundColor: color + '55' }, reducedMotion ? null : sweep]} />
+    </View>
+  );
+}
 
 export default function FindProductScreen() {
   const theme = useTheme();
@@ -30,7 +69,6 @@ export default function FindProductScreen() {
           entering={FadeIn.duration(300)}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
-
           <View style={styles.header}>
             <ThemedText type="h1" style={styles.title}>
               Find Product
@@ -40,15 +78,18 @@ export default function FindProductScreen() {
             </ThemedText>
           </View>
 
-          {/* Camera viewfinder mock */}
-          <Animated.View
-            entering={FadeInDown.duration(400).delay(80)}
-            style={[
+          {/* Camera viewfinder mock — tappable, with an ambient scan line */}
+          <Pressable
+            onPress={() => router.push('/find-product/camera')}
+            accessibilityRole="button"
+            accessibilityLabel="Open the camera to scan a product"
+            style={({ pressed }) => [
               styles.viewfinder,
               {
                 borderRadius: Radius.xl,
                 borderColor: theme.border,
                 backgroundColor: theme.surfaceSecondary,
+                opacity: pressed ? 0.92 : 1,
               },
             ]}>
             {/* corner brackets */}
@@ -58,18 +99,16 @@ export default function FindProductScreen() {
                 style={[styles.bracket, styles[corner], { borderColor: theme.accent }]}
               />
             ))}
-            <View
-              style={[styles.scanLine, { backgroundColor: theme.accent + '55' }]}
-            />
+            <ScanLine color={theme.accent} />
             <View style={styles.viewfinderCenter}>
               <Icon name="camera" size={40} color={theme.textTertiary} />
               <ThemedText type="caption" themeColor="textTertiary">
-                Take a product photo to find it
+                Tap to scan — or pick from your gallery below
               </ThemedText>
             </View>
-          </Animated.View>
+          </Pressable>
 
-          {/* Shutter button */}
+          {/* Shutter row */}
           <View style={styles.shutterRow}>
             <View style={styles.shutterPlaceholder} />
             <Pressable
@@ -105,24 +144,27 @@ export default function FindProductScreen() {
 
           {/* Tips */}
           <View style={styles.tips}>
-            {TIPS.map((tip) => (
-              <ThemedView
+            {TIPS.map((tip, index) => (
+              <Animated.View
                 key={tip.text}
-                type="surface"
-                style={[styles.tipRow, { borderColor: theme.border }]}>
-                <View style={[styles.tipIcon, { backgroundColor: theme.accentSoft }]}>
-                  <Icon name={tip.icon} size={14} color={theme.accent} />
-                </View>
-                <ThemedText type="bodySmall" themeColor="textSecondary">
-                  {tip.text}
-                </ThemedText>
-              </ThemedView>
+                entering={FadeInDown.duration(Motion.base).delay(120 + index * 70)}>
+                <ThemedView
+                  type="surface"
+                  style={[styles.tipRow, { borderColor: theme.border }]}>
+                  <View style={[styles.tipIcon, { backgroundColor: theme.accentSoft }]}>
+                    <Icon name={tip.icon} size={14} color={theme.accent} />
+                  </View>
+                  <ThemedText type="bodySmall" themeColor="textSecondary">
+                    {tip.text}
+                  </ThemedText>
+                </ThemedView>
+              </Animated.View>
             ))}
           </View>
 
           <ThemedView style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
             <Icon name="sparkles" size={16} color={theme.accent} />
-            <ThemedText type="caption" style={[styles.noticeText, { color: theme.accent }]}>
+            <ThemedText type="caption" style={[styles.noticeText, { color: theme.accentDark }]}>
               AI-powered product recognition is ready — take a photo to search the catalog.
             </ThemedText>
           </ThemedView>
@@ -176,7 +218,7 @@ const styles = StyleSheet.create({
     right: 24,
     height: 2,
     borderRadius: 2,
-    top: '50%',
+    top: '18%',
   },
   viewfinderCenter: {
     alignItems: 'center',

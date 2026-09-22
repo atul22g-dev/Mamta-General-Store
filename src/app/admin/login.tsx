@@ -240,6 +240,7 @@ export default function AdminLoginScreen() {
               title={submitting ? 'Signing in…' : 'Sign In'}
               onPress={() => void handleSignIn()}
               disabled={!canSubmit}
+              busy={submitting}
               block
             />
           </View>

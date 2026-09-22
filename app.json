@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mamta-general-store",
+    "name": "Mamta General Store",
     "slug": "mamta-general-store",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,22 @@
     "scheme": "mamtageneralstore",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/images/play_store_512.png"
+      "icon": "./assets/images/play_store_512.png",
+      "bundleIdentifier": "com.atul22gdev.mamtageneralstore",
+      "supportsTablet": false
     },
     "android": {
+      "package": "com.atul22gdev.mamtageneralstore",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/play_store_512.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -32,11 +40,30 @@
         }
       ],
       "expo-sharing",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Mamta General Store to use the camera to photograph a product and find its price."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mamta General Store to access your photos so you can pick product pictures.",
+          "cameraPermission": "Allow Mamta General Store to use the camera to photograph a product and find its price."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7bb946b8-d819-4d9f-bf21-b7c68eff2f86"
+      }
     }
   }
 }

@@ -31,6 +31,7 @@ const { rankCandidates, tierForScore } = await import(
 const {
   TIER_LIKELY_MATCH,
   TIER_SIMILAR_FLOOR,
+  TIER_RELATED_FLOOR,
   MATCH_TIER_LABELS,
   MAIN_MATCH_THRESHOLD,
   SIMILAR_PRODUCT_THRESHOLD,
@@ -106,11 +107,23 @@ test('bands sit inside the MEASURED score gap (calibration guard)', () => {
     'clipped photos (0.64) should be offered as similar products');
   assert.ok(TIER_SIMILAR_FLOOR > strongestUnrelated,
     `floor must exclude unrelated photos (≤ ${strongestUnrelated})`);
+
+  // The related floor must sit BETWEEN unrelated noise and the lookalike
+  // groups, so colour variants (0.29) and same-colour/other-shape (0.21)
+  // surface as "Related product" instead of a dead no-match — while noise
+  // (≤ 0.12) stays out.
+  assert.ok(TIER_RELATED_FLOOR > strongestUnrelated,
+    `related floor (${TIER_RELATED_FLOOR}) must exclude unrelated noise (≤ ${strongestUnrelated})`);
+  assert.ok(TIER_RELATED_FLOOR < 0.21,
+    `related floor (${TIER_RELATED_FLOOR}) must admit the same-colour/other-shape lookalike (0.21)`);
+  assert.ok(TIER_RELATED_FLOOR < TIER_SIMILAR_FLOOR,
+    'related band must sit below the similar band');
 });
 
 test('tier labels use the required wording', () => {
   assert.equal(MATCH_TIER_LABELS.likely_match, 'Likely match');
   assert.equal(MATCH_TIER_LABELS.similar_product, 'Similar product');
+  assert.equal(MATCH_TIER_LABELS.related_product, 'Related product');
 });
 
 // ---------------------------------------------------------------------------
@@ -123,6 +136,9 @@ test('0.83+ is a likely match, below is a similar product', () => {
   assert.equal(tierForScore(TIER_LIKELY_MATCH), 'likely_match');
   assert.equal(tierForScore(0.70), 'similar_product');
   assert.equal(tierForScore(0.55), 'similar_product');
+  assert.equal(tierForScore(0.29), 'related_product', 'colour-variant score is a related product');
+  assert.equal(tierForScore(0.21), 'related_product', 'same-colour/other-shape score is a related product');
+  assert.equal(tierForScore(0.12), 'related_product', 'tierForScore never upgrades; the ranker drops it');
 });
 
 // ---------------------------------------------------------------------------
@@ -170,14 +186,43 @@ test('at-threshold boundary: exactly TIER_LIKELY_MATCH promotes, floor passes', 
   assert.equal(atFloor.similar.length, 1, 'at-floor result is still shown as similar');
 });
 
-test('low similarity (< floor) is dropped entirely', () => {
+test('low similarity (< related floor) is dropped entirely', () => {
   const result = rankCandidates([
     cand('noise', 'Noise', 0.12),
-    cand('lookalike', 'Lookalike', 0.29),
+    cand('unrelated', 'Unrelated', 0.05),
   ]);
   assert.equal(result.primary, null);
   assert.equal(result.similar.length, 0);
+  assert.equal(result.related.length, 0);
   assert.equal(result.hasResults, false);
+});
+
+test('colour-variant score (0.29) surfaces as a Related product, not dropped', () => {
+  const result = rankCandidates([cand('v', 'Green Ball Variant', 0.29)]);
+  assert.equal(result.primary, null, 'a lookalike is never the answer');
+  assert.equal(result.similar.length, 0, 'a lookalike never claims the Similar band');
+  assert.equal(result.related.length, 1);
+  assert.equal(result.related[0].tier, 'related_product');
+  assert.equal(result.related[0].tierLabel, 'Related product');
+  assert.equal(result.hasResults, true, 'the user gets tap-able suggestions, not a dead end');
+});
+
+test('same-colour/other-shape score (0.21) also surfaces as Related', () => {
+  const result = rankCandidates([cand('s', 'Yellow Box', 0.21)]);
+  assert.equal(result.related.length, 1);
+  assert.equal(result.hasResults, true);
+});
+
+test('primary/related split: likely match first, related excluded from primary', () => {
+  const result = rankCandidates([
+    cand('top', 'Top', 0.95),
+    cand('lookalike', 'Lookalike', 0.29),
+  ]);
+  assert.ok(result.primary);
+  assert.equal(result.primary.product.id, 'top');
+  assert.equal(result.similar.length, 0);
+  assert.equal(result.related.length, 1);
+  assert.ok(!result.related.some((r) => r.product.id === 'top'));
 });
 
 test('duplicate product rows collapse to the strongest image', () => {
@@ -251,6 +296,14 @@ test('manual pick renders without a similarity claim', () => {
 
 test('no-results path still distinguishes ambiguous candidates from true no-match', () => {
   assert.match(resultScreen, /decision\?\.kind !== 'ambiguous'/);
+});
+
+test('related products render as their own honest section (never a match claim)', () => {
+  assert.match(resultScreen, /RelatedProductsSection/);
+  assert.match(resultScreen, /Related products/);
+  assert.match(resultScreen, /related: RankedCandidate\[\]/);
+  assert.match(resultScreen, /ranked\.related/);
+  assert.ok(!/> 0\.8/.test(resultScreen), 'no hardcoded bands in the screen');
 });
 
 // ---------------------------------------------------------------------------

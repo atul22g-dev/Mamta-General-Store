@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ThemedText } from '@/components/common/themed-text';
 import { MinTouchTarget, Motion, Spacing, Radius, Shadows } from '@/constants';
@@ -28,6 +28,12 @@ type ButtonProps = {
   size?: ButtonSize;
   icon?: ReactNode;
   iconRight?: ReactNode;
+  /**
+   * Async in-flight state (loading-buttons guideline): shows a spinner,
+   * sets a11y busy, and makes the button non-interactive so a double
+   * tap can't fire a second request.
+   */
+  busy?: boolean;
   block?: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
@@ -70,59 +76,67 @@ export function Button({
   size = 'md',
   icon,
   iconRight,
+  busy = false,
   block = false,
   disabled = false,
   accessibilityLabel,
   style,
 }: ButtonProps) {
   const theme = useTheme();
+  const nonInteractive = disabled || busy;
 
   // Style resolution is table-driven: each variant/size maps to tokens in
   // the lookup tables above instead of nested conditionals here.
   const sizeStyle =
     size === 'sm' ? styles.sm : size === 'lg' ? styles.lg : styles.md;
-  const backgroundColor = disabled
+  const backgroundColor = nonInteractive
     ? DISABLED_STYLE.backgroundColor(theme)
     : BACKGROUND_COLOR[variant](theme);
-  const textColor = disabled
+  const textColor = nonInteractive
     ? DISABLED_STYLE.color(theme)
     : TEXT_COLOR[variant](theme);
-  const hoverBackgroundColor = disabled
+  const hoverBackgroundColor = nonInteractive
     ? undefined
     : HOVER_BACKGROUND[variant]?.(theme);
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={nonInteractive}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      accessibilityState={{ disabled, busy: false }}
+      accessibilityState={{ disabled: nonInteractive, busy }}
       style={({ pressed, hovered }) => [
         styles.button,
         sizeStyle,
         { backgroundColor },
         BORDERED.has(variant) && { borderWidth: 1, borderColor: theme.border },
-        variant !== 'ghost' && !disabled && Shadows.sm,
+        variant !== 'ghost' && !nonInteractive && Shadows.sm,
         isWeb &&
-          !disabled && {
+          !nonInteractive && {
             cursor: 'pointer' as const,
             transitionProperty: 'background-color, box-shadow, transform, opacity',
             transitionDuration: `${Motion.fast}ms`,
           },
         isWeb && hovered && !pressed && hoverBackgroundColor && { backgroundColor: hoverBackgroundColor },
-        isWeb && hovered && !disabled && Shadows.md,
+        isWeb && hovered && !nonInteractive && Shadows.md,
         block && styles.block,
-        pressed && !disabled && styles.pressed,
+        pressed && !nonInteractive && styles.pressed,
         style,
       ]}>
-      {icon && <View style={styles.icon}>{icon}</View>}
-      <ThemedText
-        type="smallBold"
-        style={[{ color: textColor }, size === 'lg' && styles.textLg]}>
-        {title}
-      </ThemedText>
-      {iconRight && <View style={styles.icon}>{iconRight}</View>}
+      {busy ? (
+        <ActivityIndicator size="small" color={textColor} />
+      ) : (
+        <>
+          {icon && <View style={styles.icon}>{icon}</View>}
+          <ThemedText
+            type="smallBold"
+            style={[{ color: textColor }, size === 'lg' && styles.textLg]}>
+            {title}
+          </ThemedText>
+          {iconRight && <View style={styles.icon}>{iconRight}</View>}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -160,6 +174,7 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
   icon: {
     alignItems: 'center',

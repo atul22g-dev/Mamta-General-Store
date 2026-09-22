@@ -13,6 +13,21 @@
 /** Longest edge cap after optimization (px). */
 export const MAX_EDGE_PX = 1024;
 
+/**
+ * Exact byte size of a standard-base64 `data:` URI — pure arithmetic, no
+ * fetch, no Blob, no decoding. 3 bytes per 4 chars, minus base64 padding.
+ * Shared by the optimizer's size probe and the image pipeline's web fallback
+ * (which otherwise reports Blob-based sizes React Native computes slowly).
+ */
+export function dataUriByteSize(uri: string): number | null {
+  const comma = uri.indexOf(',');
+  if (comma < 0) return null;
+  const base64 = uri.slice(comma + 1);
+  if (base64.length === 0) return null;
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 /** JPEG compression quality for optimized images. */
 export const JPEG_QUALITY = 0.8;
 

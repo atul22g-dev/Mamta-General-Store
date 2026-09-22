@@ -32,6 +32,7 @@ const {
   rememberOptimization,
   clearOptimizationCache,
   optimizationCacheSize,
+  dataUriByteSize,
 } = await import(
   pathToFileURL(path.join(ROOT, 'src', 'utils', 'image-optimizer.ts')).href
 );
@@ -230,7 +231,9 @@ test('service validates URI and type before any decode', () => {
   const uriIdx = body.indexOf('validateImageUri(');
   const typeIdx = body.indexOf('validateImageType(');
   const cacheIdx = body.indexOf('getCachedOptimization(');
-  const decodeIdx = body.indexOf('await measureImage(source)');
+  // The measure/probe reads are raced via Promise.all — anchor on the call
+  // itself, which stays strictly after the cheap checks in both forms.
+  const decodeIdx = body.indexOf('measureImage(source)');
   assert.ok(uriIdx >= 0, 'URI validation runs');
   assert.ok(typeIdx > uriIdx, 'type validation after URI validation');
   assert.ok(cacheIdx > typeIdx, 'cache check after validation');
@@ -243,6 +246,36 @@ test('service logs original + optimized dimensions, sizes and processing time', 
   assert.match(service, /optimizedBytes/);
   assert.match(service, /formatBytes\(originalBytes\)/);
   assert.match(service, /durationMs/);
+});
+
+test('service measures file size WITHOUT the slow RN Blob path', () => {
+  // The old probe fetched and used Response.blob(), which on native copies
+  // into the blob store and round-trips base64 (the expo-blob warning) and
+  // could report nonsense sizes (a 472×1024 JPEG measured as "14 B").
+  assert.doesNotMatch(service, /response\.blob\(\)/, 'no Response.blob() in the size probe');
+  assert.match(service, /import\('expo-file-system'\)/, 'file sizes come from native file metadata');
+  assert.match(service, /dataUriByteSize\(/, 'data URIs are sized by base64 arithmetic');
+});
+
+test('dataUriByteSize — exact base64 arithmetic', () => {
+  // 'Hello' -> 'SGVsbG8=' (8 chars, 1 pad) -> 5 bytes.
+  assert.equal(dataUriByteSize('data:image/jpeg;base64,SGVsbG8='), 5);
+  // 3-byte payload 'abc' -> 'YWJj' (no padding).
+  assert.equal(dataUriByteSize('data:image/jpeg;base64,YWJj'), 3);
+  // 6-byte payload -> 8 chars, no padding.
+  assert.equal(dataUriByteSize('data:image/png;base64,' + Buffer.from('123456').toString('base64')), 6);
+  // Malformed / empty payloads are null, not a bogus size.
+  assert.equal(dataUriByteSize('data:image/jpeg;base64,'), null);
+  assert.equal(dataUriByteSize('data:image/jpeg;base64'), null);
+  // A real 1x1 px JPEG (the smallest legitimate photo payload) — 125 bytes.
+  const px = Buffer.from(
+    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a' +
+      'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA' +
+      'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==',
+    'base64',
+  );
+  const uri = `data:image/jpeg;base64,${px.toString('base64')}`;
+  assert.equal(dataUriByteSize(uri), px.length);
 });
 
 test('service returns cache-hit results without decoding', () => {

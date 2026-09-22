@@ -105,6 +105,14 @@ async function measureImage(uri: string): Promise<{ kind: 'size'; size: number }
   if (!response.ok) {
     throw new Error(`Could not read the image (HTTP ${response.status}).`);
   }
+  if (uri.startsWith('data:')) {
+    // Standard base64 arithmetic — React Native computes Response.blob()
+    // slowly (native blob store + base64 round-trip, see the expo-blob
+    // warning), and a data URI's length is exact math anyway.
+    const { dataUriByteSize } = await import('@/utils/image-optimizer');
+    const size = dataUriByteSize(uri);
+    if (size !== null) return { kind: 'size', size };
+  }
   return { kind: 'size', size: (await response.blob()).size };
 }
 

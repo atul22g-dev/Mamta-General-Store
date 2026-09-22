@@ -6,23 +6,28 @@ import Animated, {
   withRepeat,
   withTiming,
   Easing,
+  useReducedMotion,
 } from 'react-native-reanimated';
 
-import { Radius } from '@/constants';
+import { Radius, Shadows, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 
-/** One pulsing block. */
+/**
+ * One pulsing block — the loading placeholder pattern (loading-states rule).
+ * Honors prefers-reduced-motion: the looping pulse is replaced by a static
+ * tinted block, because the loop is decorative, not informational.
+ */
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const theme = useTheme();
+  const reducedMotion = useReducedMotion();
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    // Compiler-compatible shared-value accessors (.set/.get) — direct
-    // .value writes are a mutation the React Compiler cannot optimize.
+    if (reducedMotion) return; // static block — no loop
     progress.set(
       withRepeat(withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.ease) }), -1, true),
     );
-  }, [progress]);
+  }, [progress, reducedMotion]);
 
   const pulse = useAnimatedStyle(() => ({
     opacity: 0.45 + 0.4 * progress.get(),
@@ -31,8 +36,11 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <Animated.View
       style={[
-        { backgroundColor: theme.surfaceSecondary, borderRadius: Radius.sm },
-        pulse,
+        {
+          backgroundColor: theme.surfaceSecondary,
+          borderRadius: Radius.sm,
+        },
+        reducedMotion ? null : pulse,
         style,
       ]}
     />
@@ -48,6 +56,7 @@ export function SkeletonRow({ style }: { style?: StyleProp<ViewStyle> }) {
       style={[
         styles.row,
         { backgroundColor: theme.surface, borderColor: theme.border },
+        Shadows.sm,
         style,
       ]}>
       <Skeleton style={styles.thumb} />
@@ -75,31 +84,34 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 12,
+    gap: Spacing.three,
+    padding: Spacing.three,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: Spacing.two,
   },
   thumb: {
-    width: 48,
-    height: 48,
+    width: 64,
+    height: 64,
     borderRadius: Radius.md,
   },
   lines: {
     flex: 1,
-    gap: 8,
+    gap: Spacing.two,
   },
   lineWide: {
-    height: 12,
-    width: '72%',
+    height: 14,
+    width: '70%',
+    borderRadius: Radius.sm,
   },
   lineShort: {
-    height: 10,
-    width: '42%',
+    height: 12,
+    width: '45%',
+    borderRadius: Radius.sm,
   },
   price: {
-    width: 52,
+    width: 56,
     height: 16,
+    borderRadius: Radius.sm,
   },
 });

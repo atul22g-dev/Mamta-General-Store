@@ -116,7 +116,16 @@ export const AMBIGUOUS_MARGIN = 0.03;
 //                                 alternative, never as a confident answer.
 //                                 (The measured clip case, 0.64, lands here:
 //                                 offered, not identified.)
-//   below 0.55                 — DROPPED from results entirely. It may still
+//   TIER_RELATED_FLOOR  ≥ 0.15  — below "Similar" but NOT dropped: a
+//                                 "Related product" band. Anchored between
+//                                 the strongest unrelated/noise photo
+//                                 (measured 0.12) and the two measured
+//                                 lookalike groups (0.21 / 0.29) so a
+//                                 different-colour variant or a similar-
+//                                 looking product becomes a tap-able
+//                                 suggestion instead of a dead "no match"
+//                                 — without ever claiming to be a match.
+//   below 0.15                 — DROPPED from results entirely. It may still
 //                                 be visible in the catalog by name; a photo
 //                                 score that low is noise, not evidence.
 //
@@ -141,12 +150,23 @@ export const TIER_LIKELY_MATCH = 0.83;
  */
 export const TIER_SIMILAR_FLOOR = 0.55;
 
+/**
+ * Minimum score to appear as a "Related product" — BELOW the similar band,
+ * but still worth a tap when nothing matched better. Anchored in the
+ * MEASURED gap: the strongest unrelated/noise photo scored 0.12 and the
+ * lookalike groups measured 0.21 and 0.29, so 0.15 keeps noise out while
+ * letting colour variants and similar shapes surface honestly.
+ * Range: (0, TIER_SIMILAR_FLOOR). Default: 0.15.
+ */
+export const TIER_RELATED_FLOOR = 0.15;
+
 /** User-facing copy for each presentation tier. */
-export type MatchTierName = 'likely_match' | 'similar_product';
+export type MatchTierName = 'likely_match' | 'similar_product' | 'related_product';
 
 export const MATCH_TIER_LABELS: Record<MatchTierName, string> = {
   likely_match: 'Likely match',
   similar_product: 'Similar product',
+  related_product: 'Related product',
 };
 
 // ---------------------------------------------------------------------------

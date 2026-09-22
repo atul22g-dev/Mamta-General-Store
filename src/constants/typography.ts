@@ -30,7 +30,8 @@ export const Typography = StyleSheet.create({
     fontFamily: Platform.select({ ios: Fonts?.sans, default: Fonts?.sans }),
   },
   body: {
-    fontSize: 15,
+    // 16px floor for primary reading text (readable-font-size rule).
+    fontSize: 16,
     lineHeight: 24,
     fontWeight: '400',
     fontFamily: Platform.select({ ios: Fonts?.sans, default: Fonts?.sans }),

@@ -1,13 +1,14 @@
 import { Image } from 'expo-image';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
   Keyframe,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -16,21 +17,26 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { ThemedText } from '@/components/common/themed-text';
 import { APP_ICON_SOURCE, Spacing, Radius, Shadows } from '@/constants';
+import { useTheme } from '@/hooks/use-theme';
 
-const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
 
 /**
- * Native startup screen — modern brand launch:
- *   • a rounded brand-gradient tile holding the store icon, popping in;
+ * Native startup screen — modern brand launch, fully theme-aware (light and
+ * dark follow the app palette instead of a hardcoded white flash):
+ *   • a rounded brand-tinted tile holding the store icon, popping in;
  *   • the wordmark and tagline staggering in beneath it;
- *   • a quiet three-dot loading pulse at the bottom;
+ *   • a quiet three-dot loading wave in the brand accent;
  *   • a gentle scale+fade handoff as the app mounts.
  *
- * Runs after the static splash hides (expo-splash-screen), then animates
- * out once the first frame of real content is ready.
+ * Motion follows the system reduced-motion setting: the entrance stagger and
+ * the loading wave both settle to calm, static states. Runs after the static
+ * splash hides (expo-splash-screen), then animates out once the first frame
+ * of real content is ready.
  */
 export function AnimatedSplashOverlay() {
+  const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
 
@@ -54,21 +60,27 @@ export function AnimatedSplashOverlay() {
   const content = (
     <>
       <Animated.View
-        entering={logoKeyframe.duration(DURATION)}
-        style={[styles.iconTile, Shadows.lg]}>
+        entering={reduceMotion ? FadeIn.duration(200) : logoKeyframe.duration(DURATION)}
+        style={[
+          styles.iconTile,
+          { backgroundColor: theme.accentSoft, borderColor: `${theme.accent}22` },
+          Shadows.sm,
+        ]}>
         <Image style={styles.splashImage} source={APP_ICON_SOURCE} contentFit="contain" />
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.duration(400).delay(220)} style={styles.wordmark}>
-        <ThemedText type="h1" style={styles.splashTitle}>
+      <Animated.View
+        entering={reduceMotion ? undefined : FadeInDown.duration(400).delay(220)}
+        style={styles.wordmark}>
+        <ThemedText type="h1" style={[styles.splashTitle, { color: theme.text }]}>
           Mamta General Store
         </ThemedText>
-        <ThemedText type="bodySmall" style={styles.splashSubtitle}>
+        <ThemedText type="bodySmall" style={[styles.splashSubtitle, { color: theme.textSecondary }]}>
           Scan to price · Inventory in your pocket
         </ThemedText>
       </Animated.View>
 
-      <SplashDots />
+      <SplashDots color={theme.accent} reduceMotion={reduceMotion} />
     </>
   );
 
@@ -80,7 +92,7 @@ export function AnimatedSplashOverlay() {
           scheduleOnRN(setVisible, false);
         }
       })}
-      style={styles.splashOverlay}>
+      style={[styles.splashOverlay, { backgroundColor: theme.background }]}>
       {content}
     </Animated.View>
   ) : (
@@ -90,22 +102,29 @@ export function AnimatedSplashOverlay() {
           setAnimate(true);
         });
       }}
-      style={styles.splashOverlay}>
+      style={[styles.splashOverlay, { backgroundColor: theme.background }]}>
       {content}
     </View>
   );
 }
 
-/** Quiet loading pulse shown at the bottom of the startup screen. */
-function SplashDots() {
+/**
+ * Quiet loading wave shown at the bottom of the startup screen. Continuous
+ * animation is reserved for loading indicators (UI guideline): three dots
+ * pulse in a staggered wave in the brand accent. With reduced motion the
+ * dots stay static — no infinite animation runs at all.
+ */
+function SplashDots({ color, reduceMotion }: { color: string; reduceMotion: boolean }) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
+    if (reduceMotion) return; // static dots — the calm fallback
     // Compiler-safe shared-value accessors (.set/.get).
     progress.set(
       withRepeat(withTiming(1, { duration: 900, easing: Easing.inOut(Easing.quad) }), -1, true),
     );
-  }, [progress]);
+    return () => progress.set(0);
+  }, [progress, reduceMotion]);
 
   const pulse = useAnimatedStyle(() => ({
     opacity: 0.3 + 0.7 * progress.get(),
@@ -113,35 +132,20 @@ function SplashDots() {
   }));
 
   return (
-    <Animated.View entering={FadeIn.duration(300).delay(500)} style={styles.dotsRow}>
+    <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(300).delay(500)} style={styles.dotsRow}>
       {[0, 1, 2].map((i) => (
         <Animated.View
           key={i}
-          style={[styles.dot, pulse, { marginLeft: i === 0 ? 0 : Spacing.two }]}
+          style={[
+            styles.dot,
+            reduceMotion ? styles.dotStatic : pulse,
+            { backgroundColor: color, marginLeft: i === 0 ? 0 : Spacing.two },
+          ]}
         />
       ))}
     </Animated.View>
   );
 }
-
-const keyframe = new Keyframe({
-  0: {
-    transform: [{ scale: INITIAL_SCALE_FACTOR }],
-  },
-  100: {
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(0.7),
-  },
-});
-
-const glowKeyframe = new Keyframe({
-  0: {
-    transform: [{ rotateZ: '0deg' }],
-  },
-  100: {
-    transform: [{ rotateZ: '7200deg' }],
-  },
-});
 
 const logoKeyframe = new Keyframe({
   0: {
@@ -158,57 +162,9 @@ const logoKeyframe = new Keyframe({
   },
 });
 
-/**
- * Animated app icon (used by dev/launch surfaces): the store icon inside
- * a rounded brand-tinted tile with a slow rotating glow behind it.
- */
-export function AnimatedIcon() {
-  return (
-    <View style={styles.iconContainer}>
-      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
-        <Image style={styles.glow} source={APP_ICON_SOURCE} contentFit="contain" />
-      </Animated.View>
-
-      <Animated.View entering={keyframe.duration(DURATION)} style={styles.background} />
-      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
-        <Image style={styles.image} source={APP_ICON_SOURCE} contentFit="contain" />
-      </Animated.View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  imageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  glow: {
-    width: 201,
-    height: 201,
-    position: 'absolute',
-    opacity: 0.18,
-  },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 128,
-    height: 128,
-    zIndex: 100,
-  },
-  image: {
-    width: 96,
-    height: 96,
-  },
-  background: {
-    borderRadius: 40,
-    backgroundColor: '#FFFFFF',
-    width: 128,
-    height: 128,
-    position: 'absolute',
-  },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
@@ -218,24 +174,23 @@ const styles = StyleSheet.create({
     width: 132,
     height: 132,
     borderRadius: 36,
-    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
   splashImage: {
     width: 112,
     height: 112,
+    borderRadius: 28,
   },
   wordmark: {
     alignItems: 'center',
     gap: Spacing.half,
   },
   splashTitle: {
-    color: '#0F172A',
     letterSpacing: -0.5,
   },
   splashSubtitle: {
-    color: '#64748B',
     letterSpacing: 0.1,
   },
   dotsRow: {
@@ -246,6 +201,8 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: Radius.full,
-    backgroundColor: '#CBD5E1',
+  },
+  dotStatic: {
+    opacity: 0.45,
   },
 });

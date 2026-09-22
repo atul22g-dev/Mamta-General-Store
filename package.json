@@ -4,12 +4,12 @@
   "version": "1.0.0",
   "scripts": {
     "start": "npx expo start -c",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "lint": "expo lint",
     "doctor": "npx expo-doctor@latest",
     "react-doctor": "npx react-doctor@latest",
     "db:deploy": "node scripts/deploy.mjs",
-    "test:all": "node tests/edge-embedding-provider.test.mjs && node tests/image-descriptor.test.mjs && node tests/embedding-generation.test.mjs && node tests/image-pipeline.test.mjs && node tests/image-optimizer.test.mjs && node tests/product-image-url.test.mjs && node tests/product-transfer.test.mjs && node tests/search-embedding.test.mjs && node tests/visual-search-rpc.test.mjs && node tests/embedding-contract.test.mjs && node tests/admin-product-flow.test.mjs && node tests/search-pipeline.test.mjs && node tests/visual-search-ranking.test.mjs && node tests/supabase-security.test.mjs && node tests/visual-match.test.mjs",
+    "test:all": "node tests/run-all.mjs",
     "test:admin-flow": "node tests/admin-product-flow.test.mjs",
     "test:db": "node tests/visual-search-rpc.test.mjs",
     "test:pipeline": "node tests/embedding-contract.test.mjs",
@@ -21,7 +21,11 @@
     "test:live": "node tests/find-product.live.test.mjs",
     "test:edge": "node tests/edge-embedding-provider.test.mjs",
     "test:images": "node tests/product-image-url.test.mjs",
-    "test:visual": "node tests/visual-match.test.mjs"
+    "test:visual": "node tests/visual-match.test.mjs",
+    "test:edge-logic": "node tests/edge-match-logic.test.mjs",
+    "test:login": "node tests/admin-login.test.mjs",
+    "generate-apk-production": "eas build --platform android --profile production",
+    "generate-apk-preview": "eas build --platform android --profile preview"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

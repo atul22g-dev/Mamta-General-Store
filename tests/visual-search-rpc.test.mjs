@@ -34,17 +34,39 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 let passed = 0;
 let failed = 0;
 const failures = [];
+const pending = []; // async test promises — awaited before the summary
 
 function test(name, fn) {
+  let result;
   try {
-    fn();
-    passed += 1;
-    console.log(`  ✓ ${name}`);
+    result = fn();
   } catch (err) {
     failed += 1;
     failures.push({ name, err });
     console.error(`  ✗ ${name}\n    ${err.message}`);
+    return;
   }
+  // Async test fns used to be swallowed here: the sync try/catch marked them
+  // passed before any assertion ran, and rejections surfaced only as
+  // unhandled promise rejections AFTER the summary printed. Await them.
+  if (result && typeof result.then === 'function') {
+    pending.push(
+      result.then(
+        () => {
+          passed += 1;
+          console.log(`  ✓ ${name}`);
+        },
+        (err) => {
+          failed += 1;
+          failures.push({ name, err });
+          console.error(`  ✗ ${name}\n    ${err.message}`);
+        },
+      ),
+    );
+    return;
+  }
+  passed += 1;
+  console.log(`  ✓ ${name}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -388,15 +410,44 @@ if (!liveReady) {
       assert.equal(status, 200, `expected 200, got ${status}: ${body.slice(0, 200)}`);
     });
     if (status === 200) {
-      test('deployed RPC response rows carry the 0013 fields', () => {
+      // NON-VACUOUS shape check: looping over returned rows silently passes
+      // when the vector matches nothing (zero rows = zero assertions — the
+      // check was green for weeks while production still ran the pre-0013
+      // RPC). A shape that must EXIST is verified against the metadata the
+      // RPC itself exposes, which needs no matching row at all.
+      test('deployed RPC returns rows with the 0013 shape (proven non-vacuously)', async () => {
         const rows = JSON.parse(body);
         assert.ok(Array.isArray(rows), 'expected a JSON array');
-        for (const row of rows) {
+        if (rows.length > 0) {
           for (const key of ['product_id', 'image_id', 'product_name', 'selling_price', 'mrp', 'image_url', 'similarity']) {
-            assert.ok(key in row, `deployed RPC row missing "${key}" — deploy migration 0013 (npm run db:deploy)`);
+            assert.ok(key in rows[0], `deployed RPC row missing "${key}" — deploy migration 0013 (npm run db:deploy)`);
           }
+          console.log(`    ${rows.length} row(s) — shape proven against real rows`);
+          return;
         }
-        console.log(`    ${rows.length} row(s) returned${rows.length ? ` — e.g. "${rows[0].product_name}" @ ${rows[0].selling_price}` : '(no stored embeddings match yet — still proves params/grants)'}`);
+        // Zero rows (synthetic vector matched nothing): re-probe with a REAL
+        // stored embedding as the query — self-similarity ≈ 1.0 guarantees
+        // ≥1 row, so the shape is ALWAYS proven against actual rows. The
+        // previous version looped over rows and passed vacuously when zero
+        // rows came back — green for weeks while production still ran the
+        // pre-0013 RPC.
+        const imgRes = await fetch(`${baseUrl}/rest/v1/product_images?select=embedding&limit=1`, {
+          headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}` },
+        });
+        assert.equal(imgRes.status, 200, `cannot read product_images embeddings (HTTP ${imgRes.status}) — shape cannot be verified non-vacuously`);
+        const imgs = await imgRes.json();
+        assert.ok(Array.isArray(imgs) && imgs.length > 0, 'no stored embeddings in product_images — save a product embedding first (admin flow), then shape CAN be verified');
+        // pgvector text form "[a,b,c]" → numbers.
+        const stored = JSON.parse(imgs[0].embedding.replace(/^\[/, '['));
+        assert.ok(Array.isArray(stored) && stored.length === 512, `stored embedding is not 512-d (got ${stored?.length}) — wrong dimension in catalog`);
+        const real = await probeRpc(baseUrl, apiKey, stored, 5);
+        assert.equal(real.status, 200, `real-embedding probe failed: ${real.body.slice(0, 200)}`);
+        const realRows = JSON.parse(real.body);
+        assert.ok(Array.isArray(realRows) && realRows.length > 0, 'RPC returned 0 rows even for a stored embedding — vector data or index is broken');
+        for (const key of ['product_id', 'image_id', 'product_name', 'selling_price', 'mrp', 'image_url', 'similarity']) {
+          assert.ok(key in realRows[0], `deployed RPC row missing "${key}" — deploy migration 0013 (npm run db:deploy)`);
+        }
+        console.log(`    synthetic vector matched nothing — shape proven against ${realRows.length} real row(s) via a stored embedding`);
       });
     }
 
@@ -413,6 +464,7 @@ if (!liveReady) {
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
+await Promise.all(pending); // async assertions MUST land before we judge
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) {
   for (const f of failures) console.error(`FAILED: ${f.name}`);

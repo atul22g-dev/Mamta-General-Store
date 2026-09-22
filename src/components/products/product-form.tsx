@@ -153,7 +153,7 @@ export function ProductForm({
                   title={rollingBack ? 'Deleting…' : 'Delete the saved product'}
                   variant="danger"
                   onPress={onRollbackSaved}
-                  disabled={rollingBack}
+                  busy={rollingBack}
                   style={styles.rollbackButton}
                 />
               )}
@@ -294,6 +294,7 @@ export function ProductForm({
               title={submitting ? submittingLabel : submitLabel}
               onPress={handleSubmit}
               disabled={submitting}
+              busy={submitting}
               block
               icon={<Icon name="save" size={18} color={theme.white} />}
             />

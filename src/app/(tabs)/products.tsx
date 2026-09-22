@@ -227,17 +227,20 @@ function Chip({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}        style={({ pressed }) => [
-          styles.chip,
-          {
-            // Selected = soft accent fill + accent outline. A solid accent
-            // fill would leave the 12px label below 4.5:1 in light mode;
-            // this pairing is readable in both schemes.
-            backgroundColor: active ? theme.accentSoft : theme.surface,
-            borderColor: active ? theme.accent : theme.border,
-            opacity: pressed ? 0.8 : 1,
-          },
-        ]}>
+      accessibilityState={{ selected: active }}
+      style={({ pressed, hovered }) => [
+        styles.chip,
+        {
+          // Selected = soft accent fill + accent outline + a checkmark (state
+          // must not rely on color alone). A solid accent fill would leave the
+          // 12px label below 4.5:1 in light mode; this pairing is readable in
+          // both schemes.
+          backgroundColor: active ? theme.accentSoft : theme.surface,
+          borderColor: active ? theme.accent : theme.border,
+          opacity: pressed ? 0.8 : hovered && !pressed ? 0.92 : 1,
+        },
+      ]}>
+      {active && <Icon name="checkmark" size={12} color={theme.accentDark} />}
       <ThemedText
         type="caption"
         style={{ color: active ? theme.accentDark : theme.textSecondary }}>
@@ -283,7 +286,9 @@ const styles = StyleSheet.create({
   },
   chip: {
     minHeight: 44,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Radius.full,

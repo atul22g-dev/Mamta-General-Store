@@ -30,6 +30,7 @@ import {
   planResize,
   getCachedOptimization,
   rememberOptimization,
+  dataUriByteSize,
   type OptimizerOptions,
   type ResizePlan,
 } from '@/utils/image-optimizer';
@@ -61,18 +62,33 @@ export class ImageServiceError extends Error {
 const TAG = '[image]';
 
 /**
- * Best-effort byte size of a file URI via fetch (works for file:// on both
- * native and web). Returns null when the size cannot be determined — size
- * logging is best-effort by design and never fails the pipeline.
+ * Best-effort byte size of a local image, measured WITHOUT Blobs:
+ *
+ *   • `file:`/`content:` → expo-file-system `File` metadata (the native
+ *     path). This replaces the old fetch().blob() probe, which hit React
+ *     Native's slow Blob path ("Response.blob() is using React Native's
+ *     Blob… base64 encoding" warning) and could report nonsense sizes.
+ *   • `data:` → exact base64 arithmetic (dataUriByteSize).
+ *   • anything else → null (network URIs are never an optimizer input).
+ *
+ * Size logging is best-effort by design: any failure returns null and never
+ * fails the pipeline.
  */
 async function probeByteSize(uri: string): Promise<number | null> {
-  try {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return blob.size > 0 ? blob.size : null;
-  } catch {
-    return null;
+  if (uri.startsWith('file:') || uri.startsWith('content:')) {
+    try {
+      const { File } = await import('expo-file-system');
+      const file = new File(uri);
+      if (!file.exists) return null;
+      if (typeof file.size === 'number') return file.size > 0 ? file.size : null;
+      return (await file.arrayBuffer()).byteLength;
+    } catch {
+      // No native file system (e.g. web) — size stays unknown.
+      return null;
+    }
   }
+  if (uri.startsWith('data:')) return dataUriByteSize(uri);
+  return null;
 }
 
 function formatBytes(bytes: number | null): string {
@@ -152,12 +168,16 @@ export async function optimizeImage(
     }
   }
 
-  // 4. True dimensions.
-  const originalSize = await measureImage(source);
-  const originalBytes =
-    source.startsWith('data:') || source.startsWith('file:') || source.startsWith('content:')
-      ? await probeByteSize(source)
-      : null;
+  // 4. True dimensions + best-effort original size (no Blob involved).
+  //    Raced, not waterfall: neither read depends on the other (both are
+  //    read-only local file access), so the wait is the slower of the two
+  //    instead of the sum. Failure semantics are unchanged — probeByteSize
+  //    never rejects (it returns null), so Promise.all rejects exactly when
+  //    measureImage does, as before.
+  const [originalSize, originalBytes] = await Promise.all([
+    measureImage(source),
+    probeByteSize(source),
+  ]);
 
   // 5. Resize plan (aspect ratio preserved; resize only when needed).
   const plan: ResizePlan = planResize(originalSize.width, originalSize.height, maxEdge);

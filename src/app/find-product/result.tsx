@@ -341,7 +341,13 @@ function SimilarProductCard({
 
       <Badge
         label={candidate.tierLabel}
-        variant={candidate.tier === 'likely_match' ? 'success' : 'neutral'}
+        variant={
+          candidate.tier === 'likely_match'
+            ? 'success'
+            : candidate.tier === 'similar_product'
+              ? 'accent'
+              : 'neutral'
+        }
         size="sm"
       />
     </Pressable>
@@ -349,15 +355,37 @@ function SimilarProductCard({
 }
 
 // ---------------------------------------------------------------------------
-// Similar Products Section
+// Candidate sections — ONE chassis, two honest labels
 // ---------------------------------------------------------------------------
 
-function SimilarProductsSection({
-  products,
-  onSelect,
-}: {
+/** The props both candidate sections pass through unchanged. */
+type SectionListProps = {
   products: RankedCandidate[];
   onSelect: (candidate: RankedCandidate) => void;
+};
+
+/**
+ * The ONE section chassis shared by the Similar and Related lists: animated
+ * entrance (reduced-motion aware), heading + count, intro line, the ranked
+ * card list and the explanatory legend row. This ~30-line JSX tree used to
+ * exist twice — once per section — so every layout or a11y change had to be
+ * made in two places. Only the copy, the count noun and the entrance delay
+ * differ between the two.
+ */
+function CandidateSection({
+  title,
+  countNoun,
+  intro,
+  legend,
+  delay,
+  products,
+  onSelect,
+}: SectionListProps & {
+  title: string;
+  countNoun: 'candidate' | 'suggestion';
+  intro: string;
+  legend: string;
+  delay: number;
 }) {
   const reduceMotion = useReducedMotion();
   const theme = useTheme();
@@ -366,16 +394,17 @@ function SimilarProductsSection({
 
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.duration(Motion.slow).delay(120)}
+      entering={reduceMotion ? undefined : FadeInDown.duration(Motion.slow).delay(delay)}
       style={styles.section}>
       <View style={styles.sectionHead}>
-        <ThemedText type="h3">Closest alternatives</ThemedText>
+        <ThemedText type="h3">{title}</ThemedText>
         <ThemedText type="caption" themeColor="textTertiary">
-          {products.length} candidate{products.length === 1 ? '' : 's'}
+          {products.length} {countNoun}
+          {products.length === 1 ? '' : 's'}
         </ThemedText>
       </View>
       <ThemedText type="caption" themeColor="textTertiary">
-        Not the item you meant? These looked closest to your photo.
+        {intro}
       </ThemedText>
       <View style={styles.similarList}>
         {products.slice(0, MAX_SIMILAR_PRODUCTS).map((candidate) => (
@@ -387,15 +416,50 @@ function SimilarProductsSection({
         ))}
       </View>
       {/* Colour is never the only signal: the badge carries a label too, and
-          the ranking line explains the ordering honestly. */}
+          the legend explains the ordering honestly. */}
       <View style={styles.legendRow}>
         <Icon name="information-circle-outline" size={13} color={theme.textTertiary} />
         <ThemedText type="caption" themeColor="textTertiary" style={styles.legendText}>
-          Results are ranked by how closely each product photo matched yours. Prices always
-          come from the store database.
+          {legend}
         </ThemedText>
       </View>
     </Animated.View>
+  );
+}
+
+function SimilarProductsSection({ products, onSelect }: SectionListProps) {
+  return (
+    <CandidateSection
+      title="Closest alternatives"
+      countNoun="candidate"
+      intro="Not the item you meant? These looked closest to your photo."
+      legend="Results are ranked by how closely each product photo matched yours. Prices always come from the store database."
+      delay={120}
+      products={products}
+      onSelect={onSelect}
+    />
+  );
+}
+
+/**
+ * Related products — the honest tier for colour variants, different packaging
+ * and similar-looking items (measured 0.15–0.55 on the two-signal score).
+ * Previously these were DROPPED below the similar floor, so a photo of a
+ * different-colour variant produced a dead "Product not found". They are now
+ * tap-able suggestions — clearly labelled, never claimed as a match — so the
+ * user can switch to one exactly like a similar product.
+ */
+function RelatedProductsSection({ products, onSelect }: SectionListProps) {
+  return (
+    <CandidateSection
+      title="Related products"
+      countNoun="suggestion"
+      intro="Same shelf, other looks — different colours or similar packaging. Not a match for your photo, but maybe what you meant."
+      legend="These are not matches for your photo — offered in case one is the item you meant. Prices come from the store database."
+      delay={180}
+      products={products}
+      onSelect={onSelect}
+    />
   );
 }
 
@@ -414,6 +478,12 @@ type ResultView = {
   featured: FeaturedMatch | null;
   /** Ranked alternates, excluding the featured product. */
   similar: RankedCandidate[];
+  /**
+   * Related-tier candidates (below the similar band, above the noise floor):
+   * colour variants, other packaging, similar-looking products. Rendered as
+   * tap-able suggestions — never labelled or presented as a match.
+   */
+  related: RankedCandidate[];
   /** The match ran, but nothing cleared the configured similarity floor. */
   notFound: boolean;
   /** No match has been run yet (the screen was opened directly). */
@@ -457,11 +527,15 @@ function resolveResultView(
   const similar = ranked.similar.filter(
     (candidate) => candidate.product.id !== featured?.product.id,
   );
+  const related = ranked.related.filter(
+    (candidate) => candidate.product.id !== featured?.product.id,
+  );
 
   const decision = outcome ? analyzeMatchOutcome(outcome) : null;
   return {
     featured,
     similar,
+    related,
     notFound: !featured && !ranked.hasResults && decision?.kind !== 'ambiguous',
     noSession: outcome === null && manualProduct === null,
   };
@@ -597,7 +671,7 @@ export default function FindProductResultScreen() {
   const manualProduct = matchSession.getManualResult();
   const [selectedCandidate, setSelectedCandidate] = useState<RankedCandidate | null>(null);
 
-  const { featured, similar, notFound, noSession } = resolveResultView(
+  const { featured, similar, related, notFound, noSession } = resolveResultView(
     visual?.outcome ?? null,
     manualProduct,
     selectedCandidate,
@@ -643,7 +717,16 @@ export default function FindProductResultScreen() {
   // Main result view
   return (
     <ThemedView style={styles.container}>
-      <ResultHeader title={featured ? 'Product Found' : 'Similar Products'} onClose={handleDone} />
+      <ResultHeader
+        title={
+          featured
+            ? 'Product Found'
+            : similar.length > 0
+              ? 'Similar Products'
+              : 'Related Products'
+        }
+        onClose={handleDone}
+      />
 
       <SafeAreaView style={styles.flex} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -674,6 +757,12 @@ export default function FindProductResultScreen() {
           {/* Similar products */}
           {similar.length > 0 && (
             <SimilarProductsSection products={similar} onSelect={handleSelectSimilar} />
+          )}
+
+          {/* Related products — colour variants / lookalikes: honest, tap-able,
+              never claimed as a match. This is what used to be a dead end. */}
+          {related.length > 0 && (
+            <RelatedProductsSection products={related} onSelect={handleSelectSimilar} />
           )}
 
           {/* Bottom actions */}
