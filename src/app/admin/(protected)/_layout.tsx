@@ -2,9 +2,9 @@ import { StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 
 import { AccessDenied } from '@/components/admin/access-denied';
-import { Loading } from '@/components/ui/loading';
-import { ErrorState } from '@/components/ui/error-state';
-import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/components/common/loading';
+import { ErrorState } from '@/components/common/error-state';
+import { ThemedView } from '@/components/common/themed-view';
 import { useAuth } from '@/hooks/use-auth';
 
 /**

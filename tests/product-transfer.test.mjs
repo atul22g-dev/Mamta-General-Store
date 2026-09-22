@@ -34,7 +34,7 @@ const {
   productsToCsv,
   toTransferProduct,
   validateTransferRow,
-} = await import('@/lib/products/product-transfer.ts');
+} = await import('@/services/product-transfer-rules.ts');
 
 const { PRODUCT_CATEGORIES, PRODUCT_UNITS } = await import('@/config/products.ts');
 

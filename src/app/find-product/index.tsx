@@ -2,11 +2,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 
-import { Icon, type IconName } from '@/components/ui/icon';
+import { Icon, type IconName } from '@/components/common/icon';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { useGalleryPick } from '@/hooks/use-gallery-pick';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';

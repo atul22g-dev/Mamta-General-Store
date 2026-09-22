@@ -1,6 +1,6 @@
 /**
  * Module loader for embedding tests: resolves @/ → src/, mocks
- * react-native modules and redirects @/lib/supabase to the test mock.
+ * react-native modules and redirects @/services/supabase.service to the test mock.
  *
  * Registered from tests/embedding-generation.test.mjs via module.register().
  */
@@ -16,7 +16,7 @@ const MOCK_MODULES = new Map([
   ['react-native', '{}'],
 ]);
 
-// Redirect @/lib/supabase to the mock module
+// Redirect @/services/supabase.service to the mock module
 const MOCK_SUPABASE_PATH = pathToFileURL(path.join(ROOT, 'tests', 'mock-supabase.mjs')).href;
 
 export function resolve(specifier, context, nextResolve) {
@@ -24,17 +24,19 @@ export function resolve(specifier, context, nextResolve) {
     return { url: `data:text/javascript,${encodeURIComponent(MOCK_MODULES.get(specifier))}`, shortCircuit: true };
   }
 
-  if (specifier === '@/lib/supabase' || specifier === '@/lib/supabase.ts') {
+  if (specifier === '@/services/supabase.service' || specifier === '@/services/supabase.service.ts') {
     return { url: MOCK_SUPABASE_PATH, shortCircuit: true };
   }
 
   if (specifier.startsWith('@/')) {
     let target = path.join(ROOT, 'src', specifier.slice(2));
-    if (!path.extname(target)) target += '.ts';
+    // The .service/.native naming contains dots; only skip appending when the
+    // path already ends with a real extension.
+    if (!/\.(ts|tsx|js|mjs|json)$/.test(target)) target += '.ts';
     return nextResolve(pathToFileURL(target).href, context);
   }
 
-  if (!specifier.startsWith('node:') && !specifier.endsWith('.ts') && !path.extname(specifier)) {
+  if (!specifier.startsWith('node:') && !/\.(ts|tsx|js|mjs|json)$/.test(specifier)) {
     try {
       return nextResolve(pathToFileURL(specifier + '.ts').href, context);
     } catch {

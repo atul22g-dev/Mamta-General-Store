@@ -17,11 +17,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('@/')) {
     let target = path.join(ROOT, 'src', specifier.slice(2));
-    if (!path.extname(target)) target += '.ts';
+    // The .service/.native naming contains dots; only skip appending when the
+    // path already ends with a real extension.
+    if (!/\.(ts|tsx|js|mjs|json)$/.test(target)) target += '.ts';
     return nextResolve(pathToFileURL(target).href, context);
   }
   // Extensionless relative imports inside transpiled TS get .ts too.
-  if (!specifier.startsWith('node:') && !specifier.endsWith('.ts') && !path.extname(specifier)) {
+  if (!specifier.startsWith('node:') && !/\.(ts|tsx|js|mjs|json)$/.test(specifier)) {
     try {
       return nextResolve(pathToFileURL(specifier + '.ts').href, context);
     } catch {

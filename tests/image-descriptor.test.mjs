@@ -36,7 +36,7 @@ const { computeImageDescriptor, compareDescriptors, SHAPE_DIMS } = await import(
 );
 
 const { MAIN_MATCH_THRESHOLD, SIMILAR_PRODUCT_THRESHOLD } = await import(
-  pathToFileURL(path.join(ROOT, 'src', 'lib', 'visual-match', 'thresholds.ts')).href
+  pathToFileURL(path.join(ROOT, 'src', 'config', 'visual-match.ts')).href
 );
 
 // ---------------------------------------------------------------------------

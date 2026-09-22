@@ -75,6 +75,8 @@ comment on type public.product_category is
 -- ----------------------------------------------------------------------------
 -- 4. Rewrite visual_search_matches exactly as migration 0009 defines it
 --    (adds the is_active filter; preserves 0008 hardening).
+--    Return shape matches migration 0013: identity + live price + image +
+--    similarity, so one call answers "what is this and what does it cost?".
 -- ----------------------------------------------------------------------------
 create or replace function public.visual_search_matches(
   query_embedding vector(512),
@@ -84,6 +86,10 @@ create or replace function public.visual_search_matches(
 returns table (
   product_id uuid,
   image_id uuid,
+  product_name text,
+  selling_price numeric,
+  mrp numeric,
+  image_url text,
   similarity double precision
 )
 language sql
@@ -98,6 +104,10 @@ as $$
   select
     pi.product_id,
     pi.id as image_id,
+    p.name as product_name,
+    p.selling_price as selling_price,
+    p.mrp as mrp,
+    pi.image_url as image_url,
     1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   inner join public.products p on p.id = pi.product_id
@@ -114,7 +124,7 @@ grant execute on function public.visual_search_matches(vector(512), double preci
   to anon, authenticated;
 
 comment on function public.visual_search_matches(vector(512), double precision, integer) is
-  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id + image_id + similarity; NEVER prices, NEVER raw embeddings.';
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id, image_id, product_name, selling_price, mrp, image_url and similarity. Prices are read live from products — never computed or stored by the embedding layer. NEVER raw embeddings.';
 
 -- ----------------------------------------------------------------------------
 -- 5. Verification queries (run after the script; expect 4 × true + counts)

@@ -3,27 +3,27 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 
-import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { SkeletonList } from '@/components/ui/skeleton';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Icon } from '@/components/common/icon';
+import { Input } from '@/components/common/input';
+import { EmptyState } from '@/components/common/empty-state';
+import { ErrorState } from '@/components/common/error-state';
+import { SkeletonList } from '@/components/common/skeleton';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Shadows, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { useProductSearch } from '@/hooks/use-product-search';
-import { formatPriceWithUnit } from '@/lib/format';
-import { PriceText } from '@/components/ui/price-text';
+import { useProductSearch } from '@/hooks/use-catalog-search';
+import { formatPriceWithUnit } from '@/utils/format';
+import { PriceText } from '@/components/common/price-text';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
   UNIT_LABELS,
   type ProductCategory,
   type ProductUnit,
-} from '@/lib/products/product-validation';
-import { matchSession } from '@/lib/scan-session';
-import type { ProductWithImages } from '@/lib/products/product-service';
+} from '@/services/product-validation.service';
+import { matchSession } from '@/utils/scan-session';
+import type { ProductWithImages } from '@/services/product.service';
 import { ProductThumb } from '@/components/products/product-thumb';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */

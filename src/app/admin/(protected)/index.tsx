@@ -5,21 +5,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { AdminCard } from '@/components/admin/admin-card';
-import { Button } from '@/components/ui/button';
-import { Icon, type IconName } from '@/components/ui/icon';
-import { Loading } from '@/components/ui/loading';
-import { DatabaseIndicator } from '@/components/ui/database-indicator';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { SectionHeader } from '@/components/ui/section-header';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Icon, type IconName } from '@/components/common/icon';
+import { Loading } from '@/components/common/loading';
+import { DatabaseIndicator } from '@/components/common/database-indicator';
+import { EmptyState } from '@/components/common/empty-state';
+import { ErrorState } from '@/components/common/error-state';
+import { SectionHeader } from '@/components/common/section-header';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing, Radius, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useResponsive } from '@/hooks/use-responsive';
 import { useAuth } from '@/hooks/use-auth';
 import { useAdminDashboard, stockStatus } from '@/hooks/use-admin-dashboard';
-import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/lib/stock';
+import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/utils/stock';
 import { useDatabaseHealth } from '@/hooks/use-database-health';
 
 type StatTile = {

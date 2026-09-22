@@ -1,8 +1,8 @@
 import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps } from 'expo-router/ui';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Icon, type IconName } from '@/components/ui/icon';
-import { ThemedText } from './themed-text';
+import { Icon, type IconName } from '@/components/common/icon';
+import { ThemedText } from '@/components/common/themed-text';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';

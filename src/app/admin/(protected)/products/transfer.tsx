@@ -19,23 +19,23 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Icon } from '@/components/ui/icon';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Card } from '@/components/common/card';
+import { Icon } from '@/components/common/icon';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Radius, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { alert } from '@/lib/alert';
-import { describePlan, describeRow, type ExportFormat, type ImportPlan } from '@/lib/products/product-transfer';
+import { alert } from '@/utils/alert';
+import { describePlan, describeRow, type ExportFormat, type ImportPlan } from '@/services/product-transfer-rules';
 import {
   applyImportPlan,
   exportCatalog,
   exportEmptyTemplate,
   readImportPlan,
   type ImportOutcome,
-} from '@/lib/products/product-transfer-service';
-import { pickTransferFile, saveTransferFile } from '@/lib/products/transfer-file';
+} from '@/services/product-transfer.service';
+import { pickTransferFile, saveTransferFile } from '@/utils/transfer-file';
 
 /** Preview rows rendered at once — a 400-row file must not lock the phone. */
 const PREVIEW_LIMIT = 40;

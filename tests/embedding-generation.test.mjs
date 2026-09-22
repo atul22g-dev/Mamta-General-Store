@@ -20,7 +20,7 @@ register(pathToFileURL(path.join(ROOT, 'tests', 'alias-loader-embed.mjs')).href)
 // Import the mock controls and module under test
 const mockPath = pathToFileURL(path.join(ROOT, 'tests', 'mock-supabase.mjs')).href;
 const { setMockInvokeResult, setMockInvokeError, resetMocks } = await import(mockPath);
-const { generateProductEmbedding } = await import('@/lib/products/embedding-service.ts');
+const { generateProductEmbedding } = await import('@/services/embedding.service.ts');
 
 // ---------------------------------------------------------------------------
 // Test helpers

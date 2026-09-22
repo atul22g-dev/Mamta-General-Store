@@ -5,7 +5,7 @@ import {
   deleteProduct,
   listProducts,
   type ProductWithImages,
-} from '@/lib/products/product-service';
+} from '@/services/product.service';
 
 export const SEARCH_DEBOUNCE_MS = 350;
 

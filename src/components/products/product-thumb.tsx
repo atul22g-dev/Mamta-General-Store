@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ImageStyle, type ViewStyle } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
+import { ThemedText } from '@/components/common/themed-text';
 import { Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import { getProductImageUrl } from '@/utils/get-product-image-url';
 
 /**
  * One product image slot for every surface that renders a product photo
