@@ -3,22 +3,22 @@ import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { IconButton } from '@/components/ui/icon-button';
-import { Input } from '@/components/ui/input';
-import { Loading } from '@/components/ui/loading';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Button } from '@/components/common/button';
+import { Icon } from '@/components/common/icon';
+import { IconButton } from '@/components/common/icon-button';
+import { Input } from '@/components/common/input';
+import { Loading } from '@/components/common/loading';
+import { EmptyState } from '@/components/common/empty-state';
+import { ErrorState } from '@/components/common/error-state';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { ProductRow } from '@/components/products/product-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductList, type ProductListStatus } from '@/hooks/use-product-list';
-import { alert } from '@/lib/alert';
-import type { ProductWithImages } from '@/lib/products/product-service';
+import { alert } from '@/utils/alert';
+import type { ProductWithImages } from '@/services/product.service';
 
 /** Vertical gap between product rows (FlatList separator). */
 function RowSeparator() {

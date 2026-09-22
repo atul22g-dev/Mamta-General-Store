@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { supabase } from '@/lib/supabase';
-import { toUserMessage } from '@/lib/errors';
-import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/lib/stock';
+import { supabase } from '@/services/supabase.service';
+import { toUserMessage } from '@/services/errors.service';
+import { LOW_STOCK_MAX, OUT_OF_STOCK_MAX } from '@/utils/stock';
 import type { Product } from '@/types/database';
 
 export type DashboardStats = {

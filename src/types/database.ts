@@ -128,6 +128,10 @@ export type Database = {
         Returns: {
           product_id: string;
           image_id: string;
+          product_name: string;
+          selling_price: number;
+          mrp: number;
+          image_url: string;
           similarity: number;
         }[];
       };

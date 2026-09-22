@@ -16,11 +16,11 @@ import { register } from 'node:module';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// Registers the loader that mocks @/lib/supabase and react-native, so the
+// Registers the loader that mocks @/services/supabase.service and react-native, so the
 // REAL resolver source is exercised without network or native modules.
 register(pathToFileURL(path.join(ROOT, 'tests', 'alias-loader-embed.mjs')).href);
 
-const { getProductImageUrl } = await import('@/lib/products/get-product-image-url.ts');
+const { getProductImageUrl } = await import('@/utils/get-product-image-url.ts');
 
 // ---------------------------------------------------------------------------
 // Test helpers

@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { Icon } from '@/components/ui/icon';
-import { ThemedText } from '@/components/themed-text';
+import { Icon } from '@/components/common/icon';
+import { ThemedText } from '@/components/common/themed-text';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { alert } from '@/lib/alert';
+import { alert } from '@/utils/alert';
 
 export type PickedImage = {
   /**

@@ -17,11 +17,24 @@
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
+
+  /* Focus ring color follows the theme's primary token. */
+  --color-focus: #059669;
 }
 
 html,
 body {
   height: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
@@ -32,6 +45,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
+}
+
+/* Accessible keyboard focus ring that doesn't fight the rounded UI.
+   Pointer input never shows it; Tab always does (focus-states rule). */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 
 /* Slim overlay scrollbar instead of the chunky Windows default. */
@@ -52,11 +77,25 @@ body {
   background-color: rgba(100, 116, 139, 0.65);
 }
 
-/* Accessible keyboard focus ring that doesn't fight the rounded UI. */
-:focus-visible {
-  outline: 2px solid #059669;
-  outline-offset: 2px;
-  border-radius: 6px;
+/* Every interactive element gets pointer affordance on pointer devices
+   (cursor-pointer rule) — RN-Web maps accessibilityRole to role. */
+@media (hover: hover) and (pointer: fine) {
+  [role='button'],
+  a,
+  [role='tab'] {
+    cursor: pointer;
+  }
+}
+
+/* Respect prefers-reduced-motion for the CSS layer; Reanimated loops
+   honor it individually via useReducedMotion (reduced-motion rule). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 ::selection {

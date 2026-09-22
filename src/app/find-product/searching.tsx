@@ -1,46 +1,58 @@
-import { useCallback, useEffect, useEffectEvent, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { Loading } from '@/components/ui/loading';
-import { ErrorState } from '@/components/ui/error-state';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Icon } from '@/components/common/icon';
+import { Loading } from '@/components/common/loading';
+import { ErrorState } from '@/components/common/error-state';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { scanSession, matchSession } from '@/lib/scan-session';
-import { matchProductFromPhoto } from '@/lib/visual-match/client';
-import { validateAndConvert } from '@/lib/image-pipeline';
+import type { SearchStage } from '@/services/search-pipeline.service';
+import { useProductSearch } from '@/hooks/useProductSearch';
 
-const STAGES = [
-  { key: 'prepare', label: 'Reading your photo' },
-  { key: 'embed', label: 'Generating product embedding' },
-  { key: 'search', label: 'Searching the catalog' },
-] as const;
+/**
+ * Stage copy for the progress list. Each entry maps to a REAL pipeline
+ * callback — the list advances because work completed, not on a timer.
+ * 'embedding' + 'searching' advance when the edge function reports each
+ * phase internally; from the app they arrive together, so the list shows
+ * them as one "Identify & search" step that completes with the response.
+ */
+const STAGES: { key: SearchStage; label: string }[] = [
+  { key: 'validating', label: 'Reading your photo' },
+  { key: 'optimizing', label: 'Preparing your photo' },
+  { key: 'searching', label: 'Identifying & searching the catalog' },
+];
 
-function StageList() {
+/** Which visual steps are complete once the pipeline reaches `stage`. */
+function completedCount(stage: SearchStage): number {
+  switch (stage) {
+    case 'validating':
+      return 0;
+    case 'optimizing':
+      return 1;
+    case 'embedding':
+    case 'searching':
+      return 2;
+    case 'done':
+      return STAGES.length;
+  }
+}
+
+function StageList({ stage }: { stage: SearchStage }) {
   const theme = useTheme();
-  const [stageIndex, setStageIndex] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setStageIndex((current) => Math.min(current + 1, STAGES.length - 1));
-    }, 1400);
-    return () => clearInterval(timer);
-  }, []);
+  const doneThrough = completedCount(stage);
 
   return (
     <View style={styles.stageList}>
-      {STAGES.map((stage, index) => {
-        const done = index < stageIndex;
-        const active = index === stageIndex;
+      {STAGES.map((entry, index) => {
+        const done = index < doneThrough;
+        const active = index === doneThrough;
         const color = done ? theme.success : active ? theme.accent : theme.textTertiary;
 
         return (
-          <View key={stage.key} style={styles.stageRow}>
+          <View key={entry.key} style={styles.stageRow}>
             <View
               style={[
                 styles.stageDot,
@@ -56,7 +68,7 @@ function StageList() {
               type="bodySmall"
               themeColor={done || active ? 'text' : 'textTertiary'}
               style={styles.stageLabel}>
-              {stage.label}
+              {entry.label}
             </ThemedText>
           </View>
         );
@@ -65,84 +77,13 @@ function StageList() {
   );
 }
 
-type Phase = 'working' | 'error';
-
 /**
- * One simple job:
- * photo URI → data URI → visual-match service → result screen.
- * The request is cancelled automatically when this screen unmounts.
+ * The searching step: renders the ONE pipeline's progress and error states.
+ * All lifecycle logic (abort-on-unmount, retry, routing) lives in the
+ * useProductSearch hook — this screen is a pure view of its state.
  */
 export default function FindProductSearchingScreen() {
-  const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('working');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
-
-  // Declared as an Effect Event: runMatch is called ONLY from the effect below
-  // (scheduled into a microtask) and must always read the latest state. Effect
-  // Events are deliberately not dependencies, so the effect no longer tears
-  // down and re-subscribes every time this component re-renders.
-  const runMatch = useEffectEvent(
-    async (signal: AbortSignal) => {
-      const shot = scanSession.getShot();
-      if (!shot) {
-        if (!signal.aborted) {
-          setPhase('error');
-          setErrorMessage('No captured photo found. Start the scan again.');
-        }
-        return;
-      }
-
-      const conversion = await validateAndConvert(shot.uri);
-      if (!conversion.ok) {
-        if (!signal.aborted) {
-          setPhase('error');
-          setErrorMessage(conversion.errorMessage);
-        }
-        return;
-      }
-
-      const result = await matchProductFromPhoto(conversion.dataUri, signal);
-      if (signal.aborted) return;
-
-      if (!result.ok) {
-        setPhase('error');
-        setErrorMessage(result.error);
-        return;
-      }
-
-      matchSession.setResult(result.data, shot);
-      scanSession.clearShot();
-      router.replace('/find-product/result');
-    },
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    // Kick the job off in a microtask rather than calling it directly: the
-    // no-photo path inside runMatch sets state synchronously, and a
-    // synchronous setState in an effect body triggers cascading renders
-    // (react-hooks/set-state-in-effect). The work still starts immediately
-    // after the current task, and the abort still covers an early unmount.
-    queueMicrotask(() => {
-      void runMatch(controller.signal);
-    });
-    return () => controller.abort();
-    // `retryKey` is the only input that should restart the match; `runMatch` is
-    // an Effect Event and always sees the latest state, so it stays out of the
-    // dependency list on purpose.
-  }, [retryKey]);
-
-  const retry = useCallback(() => {
-    setPhase('working');
-    setErrorMessage(null);
-    setRetryKey((key) => key + 1);
-  }, []);
-
-  const cancel = useCallback(() => {
-    scanSession.clearShot();
-    router.dismissTo('/(tabs)');
-  }, [router]);
+  const { phase, stage, userError, retry, cancel, searchManually } = useProductSearch();
 
   return (
     <ThemedView style={styles.container}>
@@ -150,24 +91,18 @@ export default function FindProductSearchingScreen() {
         {phase === 'working' ? (
           <View style={styles.center}>
             <Loading text="Matching your photo against the catalog…" showIcon />
-            <StageList />
+            <StageList stage={stage} />
           </View>
         ) : (
           <View style={styles.center}>
             <ErrorState
-              title="Couldn’t complete the match"
-              description={errorMessage ?? 'Unknown error.'}
+              title={userError?.title ?? 'Couldn’t complete the match'}
+              description={userError?.message ?? 'Please try again.'}
               onRetry={retry}
-              retryLabel="Try again"
+              retryLabel={userError?.retryLabel ?? 'Try again'}
               style={styles.errorPanel}
             />
-            <Button
-              title="Search Manually"
-              onPress={() => {
-                scanSession.clearShot();
-                router.push('/find-product/search');
-              }}
-            />
+            <Button title="Search Manually" onPress={searchManually} />
             <Button title="Cancel" variant="secondary" onPress={cancel} />
           </View>
         )}

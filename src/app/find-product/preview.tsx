@@ -4,15 +4,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Icon } from '@/components/ui/icon';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { IconButton } from '@/components/common/icon-button';
+import { Icon } from '@/components/common/icon';
+import { EmptyState } from '@/components/common/empty-state';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { scanSession } from '@/lib/scan-session';
+import { scanSession } from '@/utils/scan-session';
 
 /**
  * Preview step: review the single captured photo, then either retake or

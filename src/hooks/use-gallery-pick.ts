@@ -2,9 +2,9 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
-import { alert } from '@/lib/alert';
-import { scanSession } from '@/lib/scan-session';
-import { validateImageFile } from '@/lib/image-pipeline';
+import { alert } from '@/utils/alert';
+import { scanSession } from '@/utils/scan-session';
+import { validateImageFile } from '@/services/image-pipeline.service';
 
 /**
  * Shared "pick one photo from the gallery and hand it to the scan flow"

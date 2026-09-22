@@ -4,16 +4,16 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
 
-import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Icon } from '@/components/common/icon';
+import { Input } from '@/components/common/input';
+import { Button } from '@/components/common/button';
+import { IconButton } from '@/components/common/icon-button';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
-import { alert } from '@/lib/alert';
+import { alert } from '@/utils/alert';
 
 /**
  * Admin sign-in. Real Supabase email/password auth:
@@ -240,6 +240,7 @@ export default function AdminLoginScreen() {
               title={submitting ? 'Signing in…' : 'Sign In'}
               onPress={() => void handleSignIn()}
               disabled={!canSubmit}
+              busy={submitting}
               block
             />
           </View>

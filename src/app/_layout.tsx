@@ -6,6 +6,18 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider } from '@/providers/auth-provider';
 
 /**
+ * Boot handoff from the pre-hydration shell (src/app/+html.tsx): the shell
+ * defines `__signalAppReady` in an inline script; the app calls it on web
+ * mount to dismiss the startup splash. Optional-chained so test and SSR
+ * environments without the shell still typecheck and run.
+ */
+declare global {
+  interface Window {
+    __signalAppReady?: () => void;
+  }
+}
+
+/**
  * Root navigator: three branches —
  *  (tabs)         consumer app (Home / Products / Settings)
  *  find-product   scan-to-price flow (stacked on top of the tabs)

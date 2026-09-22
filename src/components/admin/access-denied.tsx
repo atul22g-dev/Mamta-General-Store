@@ -1,11 +1,11 @@
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { Badge } from '@/components/ui/badge';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Icon } from '@/components/common/icon';
+import { Badge } from '@/components/common/badge';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 

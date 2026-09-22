@@ -4,7 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import {
   getProduct,
   type ProductWithImages,
-} from '@/lib/products/product-service';
+} from '@/services/product.service';
 
 export type ProductDetailStatus = 'loading' | 'ready' | 'error' | 'not-found';
 

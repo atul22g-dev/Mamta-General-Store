@@ -5,16 +5,16 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, type CameraCapturedPicture, type FlashMode } from 'expo-camera';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-import { Icon } from '@/components/ui/icon';
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Icon } from '@/components/common/icon';
+import { Button } from '@/components/common/button';
+import { IconButton } from '@/components/common/icon-button';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useGalleryPick } from '@/hooks/use-gallery-pick';
-import { scanSession } from '@/lib/scan-session';
-import { validateImageFile } from '@/lib/image-pipeline';
+import { scanSession } from '@/utils/scan-session';
+import { validateImageFile } from '@/services/image-pipeline.service';
 
 type Phase = 'checking' | 'undetermined' | 'denied' | 'ready';
 

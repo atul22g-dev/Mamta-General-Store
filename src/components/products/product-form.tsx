@@ -4,12 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ProductImagePicker, type PickedImage } from '@/components/products/product-image-picker';
-import { Button } from '@/components/ui/button';
-import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
-import { ErrorState } from '@/components/ui/error-state';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Icon } from '@/components/common/icon';
+import { Input } from '@/components/common/input';
+import { ErrorState } from '@/components/common/error-state';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing, Radius } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -22,7 +22,7 @@ import {
   isFormValid,
   type ProductCategory,
   type ProductFormValues,
-} from '@/lib/products/product-validation';
+} from '@/services/product-validation.service';
 
 /** Fully validated + parsed payload handed to the parent's onSubmit. */
 export type ValidProductSubmit = {
@@ -48,6 +48,14 @@ type ProductFormProps = {
   embeddingStatus?: string | null;
   submitLabel?: string;
   submittingLabel?: string;
+  /**
+   * Destructive rollback for the saved-but-total-upload-failure state:
+   * renders a "Delete the saved product" action under the error panel.
+   * The hook supplies it only when a rollback is actually possible.
+   */
+  onRollbackSaved?: (() => void) | null;
+  /** True while the rollback delete is in flight. */
+  rollingBack?: boolean;
   onSubmit: (payload: ValidProductSubmit) => void;
   onCancel: () => void;
 };
@@ -67,6 +75,8 @@ export function ProductForm({
   embeddingStatus,
   submitLabel = 'Save Product',
   submittingLabel = 'Saving…',
+  onRollbackSaved,
+  rollingBack = false,
   onSubmit,
   onCancel,
 }: ProductFormProps) {
@@ -131,12 +141,23 @@ export function ProductForm({
           </View>
 
           {submitError && (
-            <ErrorState
-              description={submitError}
-              onRetry={handleSubmit}
-              retryLabel="Try saving again"
-              style={styles.errorPanel}
-            />
+            <>
+              <ErrorState
+                description={submitError}
+                onRetry={handleSubmit}
+                retryLabel="Try saving again"
+                style={styles.errorPanel}
+              />
+              {onRollbackSaved && (
+                <Button
+                  title={rollingBack ? 'Deleting…' : 'Delete the saved product'}
+                  variant="danger"
+                  onPress={onRollbackSaved}
+                  busy={rollingBack}
+                  style={styles.rollbackButton}
+                />
+              )}
+            </>
           )}
 
           {successMessage && !submitError && (
@@ -273,6 +294,7 @@ export function ProductForm({
               title={submitting ? submittingLabel : submitLabel}
               onPress={handleSubmit}
               disabled={submitting}
+              busy={submitting}
               block
               icon={<Icon name="save" size={18} color={theme.white} />}
             />
@@ -345,6 +367,7 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: Spacing.four,
   },
+  rollbackButton: { width: '100%' },
   errorPanel: {
     alignSelf: 'stretch',
   },

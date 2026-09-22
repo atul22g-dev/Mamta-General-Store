@@ -5,16 +5,16 @@ import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 import Constants from 'expo-constants';
 
-import { Button } from '@/components/ui/button';
-import { Icon, type IconName } from '@/components/ui/icon';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { DatabaseIndicator } from '@/components/ui/database-indicator';
-import { DatabaseStatusDialog } from '@/components/ui/database-status-dialog';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/common/button';
+import { Icon, type IconName } from '@/components/common/icon';
+import { Card } from '@/components/common/card';
+import { Badge } from '@/components/common/badge';
+import { DatabaseIndicator } from '@/components/common/database-indicator';
+import { DatabaseStatusDialog } from '@/components/common/database-status-dialog';
+import { Skeleton } from '@/components/common/skeleton';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import {
   MaxContentWidth,
   WebTopBarInset,

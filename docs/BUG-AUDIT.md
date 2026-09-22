@@ -77,7 +77,7 @@ Two lint findings surfaced only by a repo-wide scan were fixed at the root:
 - **Status:** Confirmed
 - **File:** `supabase/create-admin-user.sql`
 - **Function/component:** File content (documented credential); referenced by `src/app/admin/login.tsx` repair panel
-- **Description:** The file contains a plain-text admin email (`owner@mamtastore.in`) and password (`Mamta@2026`) in git. The login screen's repair instructions explicitly tell the user to "sign in with the password written in that file", confirming this is a real, used credential.
+- **Description:** The file contained a plain-text admin email and password in git (values redacted from this document — secrets must never be reproduced, even in incident notes). The login screen's repair panel referenced the file's password, confirming it was a real, used credential. The value remains recoverable from git HISTORY (commits before the redaction), so if it was ever used on the live project the admin password must be ROTATED in the Supabase Dashboard → Authentication → Users. The file itself now ships only a `▼ EDIT ME` placeholder.
 - **Root cause:** Live credentials were written into a repository file instead of a `▼ EDIT ME` placeholder supplied at run time.
 - **Reproduction steps:**
   1. `git show HEAD:supabase/create-admin-user.sql`

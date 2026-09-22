@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { checkDatabaseHealth, type HealthCheckResult } from '@/lib/health-service';
+import { checkDatabaseHealth, type HealthCheckResult } from '@/services/health.service';
 
 export type DatabaseHealthStatus = 'checking' | 'online' | 'offline';
 

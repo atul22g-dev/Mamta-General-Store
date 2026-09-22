@@ -1,16 +1,16 @@
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { Icon } from '@/components/ui/icon';
+import { Icon } from '@/components/common/icon';
 import { ProductThumb } from '@/components/products/product-thumb';
-import { ThemedText } from '@/components/themed-text';
+import { ThemedText } from '@/components/common/themed-text';
 import { Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
-import type { ProductWithImages } from '@/lib/products/product-service';
-import { formatPrice, formatPriceWithUnit } from '@/lib/format';
-import { PriceText } from '@/components/ui/price-text';
-import { stockLabel, stockTone } from '@/lib/stock';
+import { CATEGORY_LABELS, type ProductCategory } from '@/services/product-validation.service';
+import type { ProductWithImages } from '@/services/product.service';
+import { formatPrice, formatPriceWithUnit } from '@/utils/format';
+import { PriceText } from '@/components/common/price-text';
+import { stockLabel, stockTone } from '@/utils/stock';
 
 const THUMB = 56;
 

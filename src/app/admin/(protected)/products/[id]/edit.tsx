@@ -1,31 +1,21 @@
-import { useMemo, useState } from 'react';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useMemo } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import {
   ProductForm,
-  type ValidProductSubmit,
 } from '@/components/products/product-form';
-import { Loading } from '@/components/ui/loading';
-import { ErrorState } from '@/components/ui/error-state';
-import { Button } from '@/components/ui/button';
-import { ThemedView } from '@/components/themed-view';
+import { Loading } from '@/components/common/loading';
+import { ErrorState } from '@/components/common/error-state';
+import { Button } from '@/components/common/button';
+import { ThemedView } from '@/components/common/themed-view';
 import { Spacing } from '@/constants';
 import { useProductDetail } from '@/hooks/use-product-detail';
-import {
-  updateProduct,
-  uploadProductImage,
-  removeProductImage,
-  getProduct,
-} from '@/lib/products/product-service';
-import { generateProductEmbedding } from '@/lib/products/embedding-service';
-import { getProductImageUrl } from '@/lib/products/get-product-image-url';
-import { planImageChanges } from '@/lib/products/image-plan';
-import type { ProductFormValues } from '@/lib/products/product-validation';
+import { useAdminProductForm } from '@/hooks/use-admin-product-form';
+import { getProductImageUrl } from '@/utils/get-product-image-url';
+import type { ProductFormValues } from '@/services/product-validation.service';
 import type { Database } from '@/types/database';
 import type { PickedImage } from '@/components/products/product-image-picker';
-
-type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 /** Maps a loaded product into form values for the shared ProductForm.
  *  Accepts the FULL DB enum types (a product may carry a category/unit that
@@ -51,19 +41,16 @@ function toFormValues(product: {
 }
 
 /**
- * Edit Product screen for /admin/products/[id]/edit. Loads the product,
- * reuses the shared ProductForm, then updates the row and applies the
- * image add/remove plan with per-image rollback.
+ * Edit Product screen for /admin/products/[id]/edit. Loads the product and
+ * renders the shared form; the save pipeline (row update → image plan →
+ * embed-on-image-change / verify-on-metadata-only → RPC proof → success)
+ * lives in the useAdminProductForm hook.
  */
 export default function AdminEditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
 
   const { product, status, errorMessage, reload } = useProductDetail(id);
-
-  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [embeddingStatus, setEmbeddingStatus] = useState<string | null>(null);
+  const form = useAdminProductForm({ mode: 'edit', productId: product?.id });
 
   // Derived (not effect-seeded): recomputed whenever a refetch brings new
   // data. `key={product.id}` on the form resets its internal state when
@@ -86,104 +73,6 @@ export default function AdminEditProductScreen() {
     [product],
   );
 
-  const handleSubmit = async (payload: ValidProductSubmit) => {
-    if (!product || submitStatus === 'submitting') return;
-
-    setSubmitStatus('submitting');
-    setSubmitError(null);
-    setEmbeddingStatus(null);
-
-    // 1. Update the product row.
-    const updated = await updateProduct(product.id, {
-      name: payload.name,
-      description: payload.description || null,
-      category: payload.category,
-      mrp: payload.mrp,
-      selling_price: payload.sellingPrice,
-      stock: payload.stock,
-      unit: payload.unit,
-    });
-
-    if (!updated.ok) {
-      setSubmitStatus('error');
-      setSubmitError(updated.error);
-      return;
-    }
-
-    // 2. Apply the image plan: remove deleted, upload new, rollback on failure.
-    //    Derive the plan from FRESH database state (not the hook snapshot) so
-    //    a retry after a partial failure never re-uploads stored images.
-    const fresh = await getProduct(product.id);
-    const existingImages = fresh.ok ? fresh.data.product_images : product.product_images;
-    const { add, remove } = planImageChanges(existingImages, payload.images);
-
-    // Remove + upload are independent operations on different Storage
-    // objects, so every request starts together; per-item failures are
-    // collected and reported without losing the saved row.
-    const outcomes = await Promise.all([
-      ...remove.map((ref) => removeProductImage(ref.image_url)),
-      ...add.map((image) => uploadProductImage(product.id, image.uri)),
-    ]);
-    const failures = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.error]));
-    const uploadSuccesses = outcomes.filter(
-      (outcome): outcome is { ok: true; data: { imageUrl: string; path: string } } =>
-        outcome.ok && 'imageUrl' in (outcome.data as object),
-    );
-
-    if (failures.length > 0) {
-      // Row is saved; some images failed. Keep the user on the form with
-      // the error panel so they can retry — remaining diffs re-derive from
-      // the refetched product on next submit.
-      setSubmitStatus('error');
-      setSubmitError(failures.join('\n'));
-      return;
-    }
-
-    // 3. Generate embeddings for newly uploaded images.
-    //    This is a FREE operation using MobileCLIP-S0 ONNX inference.
-    //    Products without embeddings are NOT searchable by visual match,
-    //    so embedding failure is treated as a hard error.
-    if (uploadSuccesses.length > 0) {
-      setEmbeddingStatus(
-        `Generating embeddings for ${uploadSuccesses.length} new image${uploadSuccesses.length > 1 ? 's' : ''}...`,
-      );
-
-      const embeddingResult = await generateProductEmbedding(product.id);
-
-      if (!embeddingResult.ok) {
-        setSubmitStatus('error');
-        setSubmitError(
-          `Product saved, but embedding generation failed: ${embeddingResult.error} ` +
-            `The product is not searchable by image yet. You can edit the product to retry.`,
-        );
-        return;
-      }
-
-      if (embeddingResult.data.failed.length > 0) {
-        setSubmitError(
-          `Product saved, but ${embeddingResult.data.failed.length} image embedding` +
-            `${embeddingResult.data.failed.length > 1 ? 's' : ''} failed. ` +
-            `The product may not be fully searchable by image.`,
-        );
-      }
-
-      if (!embeddingResult.data.hasEmbedding) {
-        setSubmitStatus('error');
-        setSubmitError(
-          'Product saved, but no embeddings were generated. ' +
-            'The product is not searchable by image. You can edit the product to retry.',
-        );
-        return;
-      }
-    }
-
-    // 4. Brief success beat, then back to the detail screen.
-    setSubmitStatus('success');
-    setTimeout(() => {
-      router.back();
-    }, 650);
-  };
-
   if (status === 'loading') {
     return (
       <ThemedView style={styles.center}>
@@ -202,9 +91,9 @@ export default function AdminEditProductScreen() {
         <Button
           title="Back to products"
           variant="secondary"
-          onPress={() =>
-            router.canGoBack() ? router.back() : router.replace('/admin/products')
-          }
+          onPress={() => {
+            if (!form.submitting) form.cancel();
+          }}
         />
       </ThemedView>
     );
@@ -225,14 +114,16 @@ export default function AdminEditProductScreen() {
       mode="edit"
       initialValues={initialValues}
       initialImages={initialImages}
-      submitting={submitStatus === 'submitting' || submitStatus === 'success'}
-      submitError={submitError}
-      successMessage={submitStatus === 'success' ? 'Changes saved ✓' : null}
-      embeddingStatus={embeddingStatus}
+      submitting={form.submitting || form.status === 'success'}
+      submitError={form.submitError}
+      successMessage={form.status === 'success' ? 'Changes saved ✓' : null}
+      embeddingStatus={form.embeddingStatus}
       submitLabel="Save Changes"
-      submittingLabel={submitStatus === 'success' ? 'Saved ✓' : 'Saving…'}
-      onSubmit={(payload) => void handleSubmit(payload)}
-      onCancel={() => router.back()}
+      submittingLabel={form.status === 'success' ? 'Saved ✓' : 'Saving…'}
+      onSubmit={(payload) => form.submit(payload)}
+      onCancel={() => {
+        if (!form.submitting) form.cancel();
+      }}
     />
   );
 }

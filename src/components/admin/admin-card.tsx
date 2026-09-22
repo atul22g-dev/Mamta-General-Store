@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View, type ViewProps } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
+import { ThemedText } from '@/components/common/themed-text';
 import { Spacing, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 

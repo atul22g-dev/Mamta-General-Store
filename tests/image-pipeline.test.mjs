@@ -18,9 +18,9 @@ const {
   SUPPORTED_MIME_TYPES,
   MAX_IMAGE_BYTES,
   MAX_DATA_URI_CHARS,
-} = await import('@/lib/image-pipeline.ts');
+} = await import('@/services/image-pipeline.service.ts');
 
-const { bytesToBase64 } = await import('@/lib/visual-match/base64.ts');
+const { bytesToBase64 } = await import('@/utils/base64.ts');
 
 // ---------------------------------------------------------------------------
 // Test helpers

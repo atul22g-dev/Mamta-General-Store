@@ -12,7 +12,7 @@
  * Secrets: MOBILECLIP_MODEL_URL (optional model override),
  *          SUPABASE_SERVICE_ROLE_KEY (edge-only, never inside the mobile app).
  */
-import { getEmbeddingProvider } from '../_shared/embedding.ts';
+import { getEmbeddingProvider, EMBEDDING_DIMENSIONS } from '../_shared/embedding.ts';
 
 // STATIC npm specifier — see visual-match/index.ts: a dynamic import of a
 // remote URL is absent from the deployed module graph and fails at runtime.
@@ -153,12 +153,49 @@ Deno.serve(async (req: Request) => {
 
     const { vectors } = await provider.embedImages(okDownloads.map((item) => item.dataUri));
 
+    // --- Contract gate: reject ANY vector that is not exactly 512 wide ---
+    // The DB column is vector(512); Postgres would reject wrong widths, but
+    // failing HERE turns a cryptic DB error into a precise, loggable one and
+    // guarantees no partial/corrupt batch is ever persisted. No truncation,
+    // no padding — the vector is either exactly right or the image fails.
+    const contractFailures: { id: string; error: string }[] = [];
+    const contractValid: { id: string; vector: number[] }[] = [];
+    okDownloads.forEach((item, index) => {
+      const vector = vectors[index];
+      if (
+        Array.isArray(vector) &&
+        vector.length === EMBEDDING_DIMENSIONS &&
+        vector.every((n) => typeof n === 'number' && Number.isFinite(n))
+      ) {
+        contractValid.push({ id: item.id, vector });
+      } else {
+        const actual = Array.isArray(vector) ? vector.length : typeof vector;
+        console.error(
+          `[embed-product-image] Contract violation for image ${item.id}: expected ${EMBEDDING_DIMENSIONS} dimensions, got ${actual} — NOT persisted.`,
+        );
+        contractFailures.push({
+          id: item.id,
+          error: `Embedding dimension mismatch (${actual} ≠ ${EMBEDDING_DIMENSIONS}); not saved.`,
+        });
+      }
+    });
+
+    if (contractValid.length === 0) {
+      return json(
+        {
+          error: `Embedding generation produced no valid ${EMBEDDING_DIMENSIONS}-dimension vectors. Nothing was saved.`,
+          failed: [...downloadFailures, ...contractFailures],
+        },
+        500,
+      );
+    }
+
     // --- Persist embeddings concurrently (independent rows) ---
     const persistResults = await Promise.all(
-      okDownloads.map((item, index) =>
+      contractValid.map((item) =>
         serviceClient
           .from('product_images')
-          .update({ embedding: vectors[index] })
+          .update({ embedding: item.vector })
           .eq('id', item.id)
           .then(({ error }) => ({ id: item.id, error: error?.message ?? null })),
       ),
@@ -172,7 +209,7 @@ Deno.serve(async (req: Request) => {
     return json(
       {
         embedded,
-        failed: [...downloadFailures, ...persistFailures],
+        failed: [...downloadFailures, ...contractFailures, ...persistFailures],
         remaining_note: 'Re-invoke to continue backfilling.',
       },
       200,

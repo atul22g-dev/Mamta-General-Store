@@ -1,122 +1,13 @@
-import { Image } from 'expo-image';
-import { StyleSheet, View } from 'react-native';
-import Animated, { Keyframe, Easing } from 'react-native-reanimated';
-
-import { APP_ICON_SOURCE } from '@/constants';
-import classes from './animated-icon.module.css';
-
-const DURATION = 300;
-
 /**
- * Web startup screen lives in the pre-hydration shell (src/app/+html.tsx)
- * as pure HTML + CSS that auto-dismisses — a React overlay here would be
- * server-rendered into the static export and could outlive hydration
- * errors, covering the app forever. This stub keeps the shared import
- * surface (src/app/_layout.tsx) working on web.
+ * Web startup screen stub.
+ *
+ * The real web splash lives in the pre-hydration shell (src/app/+html.tsx)
+ * as pure HTML + CSS that auto-dismisses via the app-ready signal from
+ * RootLayout — a React overlay here would be server-rendered into the
+ * static export and could outlive hydration errors, covering the app
+ * forever. This stub keeps the shared import surface (src/app/_layout.tsx)
+ * working on web.
  */
 export function AnimatedSplashOverlay() {
   return null;
 }
-
-const keyframe = new Keyframe({
-  0: {
-    transform: [{ scale: 0 }],
-  },
-  60: {
-    transform: [{ scale: 1.2 }],
-    easing: Easing.elastic(1.2),
-  },
-  100: {
-    transform: [{ scale: 1 }],
-    easing: Easing.elastic(1.2),
-  },
-});
-
-const logoKeyframe = new Keyframe({
-  0: {
-    opacity: 0,
-  },
-  60: {
-    transform: [{ scale: 1.2 }],
-    opacity: 0,
-    easing: Easing.elastic(1.2),
-  },
-  100: {
-    transform: [{ scale: 1 }],
-    opacity: 1,
-    easing: Easing.elastic(1.2),
-  },
-});
-
-const glowKeyframe = new Keyframe({
-  0: {
-    transform: [{ rotateZ: '-180deg' }, { scale: 0.8 }],
-    opacity: 0,
-  },
-  [DURATION / 1000]: {
-    transform: [{ rotateZ: '0deg' }, { scale: 1 }],
-    opacity: 1,
-    easing: Easing.elastic(0.7),
-  },
-  100: {
-    transform: [{ rotateZ: '7200deg' }],
-  },
-});
-
-/**
- * Animated app icon (web): the store icon inside a rounded brand-tinted
- * tile with a slow rotating glow behind it. Mirrors the native variant.
- */
-export function AnimatedIcon() {
-  return (
-    <View style={styles.iconContainer}>
-      <Animated.View entering={glowKeyframe.duration(60 * 1000 * 4)} style={styles.glow}>
-        <Image style={styles.glow} source={APP_ICON_SOURCE} contentFit="contain" />
-      </Animated.View>
-
-      <Animated.View style={styles.background} entering={keyframe.duration(DURATION)}>
-        <div className={classes.storeIconBackground} />
-      </Animated.View>
-
-      <Animated.View style={styles.imageContainer} entering={logoKeyframe.duration(DURATION)}>
-        <Image style={styles.image} source={APP_ICON_SOURCE} contentFit="contain" />
-      </Animated.View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    width: '100%',
-    zIndex: 1000,
-    position: 'absolute',
-    top: 128 / 2 + 138,
-  },
-  imageContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  glow: {
-    width: 201,
-    height: 201,
-    position: 'absolute',
-    opacity: 0.18,
-  },
-  iconContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 128,
-    height: 128,
-  },
-  image: {
-    position: 'absolute',
-    width: 96,
-    height: 96,
-  },
-  background: {
-    width: 128,
-    height: 128,
-    position: 'absolute',
-  },
-});

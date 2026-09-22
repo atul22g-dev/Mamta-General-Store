@@ -2,9 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { type PropsWithChildren } from 'react';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
-import { supabase } from '@/lib/supabase';
-import { toSignInError } from '@/lib/auth-errors';
-import { isNetworkError } from '@/lib/errors';
+import { supabase } from '@/services/supabase.service';
+import { toSignInError } from '@/services/auth-errors.service';
+import { isNetworkError } from '@/services/errors.service';
 import type { Profile } from '@/types/database';
 
 export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated';

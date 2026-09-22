@@ -36,14 +36,14 @@ function test(name, fn) {
   }
 }
 
-const { analyzeMatchOutcome } = await import('@/lib/visual-match/decision.ts');
-const { parseEdgeMatchResponse } = await import('@/lib/visual-match/edge-contract.ts');
-const { bytesToBase64 } = await import('@/lib/visual-match/base64.ts');
+const { analyzeMatchOutcome } = await import('@/services/decision.service.ts');
+const { parseEdgeMatchResponse } = await import('@/services/edge-contract.service.ts');
+const { bytesToBase64 } = await import('@/utils/base64.ts');
 const {
   MAIN_MATCH_THRESHOLD,
   SIMILAR_PRODUCT_THRESHOLD,
   AMBIGUOUS_MARGIN,
-} = await import('@/lib/visual-match/thresholds.ts');
+} = await import('@/config/visual-match.ts');
 
 const candidate = (id, similarity) => ({
   product: { id, name: `P-${id}`, selling_price: 10, mrp: 12, unit: 'piece', stock: 1, product_images: [] },

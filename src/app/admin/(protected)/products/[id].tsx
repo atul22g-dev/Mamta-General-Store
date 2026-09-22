@@ -4,29 +4,29 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Button } from '@/components/ui/button';
-import { IconButton } from '@/components/ui/icon-button';
-import { Icon } from '@/components/ui/icon';
-import { Badge } from '@/components/ui/badge';
-import { Loading } from '@/components/ui/loading';
-import { ErrorState } from '@/components/ui/error-state';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { ImageViewer } from '@/components/ui/image-viewer';
+import { Button } from '@/components/common/button';
+import { IconButton } from '@/components/common/icon-button';
+import { Icon } from '@/components/common/icon';
+import { Badge } from '@/components/common/badge';
+import { Loading } from '@/components/common/loading';
+import { ErrorState } from '@/components/common/error-state';
+import { EmptyState } from '@/components/common/empty-state';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { ImageViewer } from '@/components/common/image-viewer';
 import { ProductThumb } from '@/components/products/product-thumb';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductDetail } from '@/hooks/use-product-detail';
-import { deleteProduct } from '@/lib/products/product-service';
-import { formatPrice, formatPriceWithUnit } from '@/lib/format';
-import { PriceText } from '@/components/ui/price-text';
-import { alert } from '@/lib/alert';
-import { getProductImageUrl } from '@/lib/products/get-product-image-url';
-import { stockLabel, stockTone } from '@/lib/stock';
-import { CATEGORY_LABELS, type ProductCategory } from '@/lib/products/product-validation';
-import type { ProductImageRef, ProductWithImages } from '@/lib/products/product-service';
+import { useProductDelete } from '@/hooks/use-product-delete';
+import { formatPrice, formatPriceWithUnit } from '@/utils/format';
+import { PriceText } from '@/components/common/price-text';
+import { alert } from '@/utils/alert';
+import { getProductImageUrl } from '@/utils/get-product-image-url';
+import { stockLabel, stockTone } from '@/utils/stock';
+import { CATEGORY_LABELS, type ProductCategory } from '@/services/product-validation.service';
+import type { ProductImageRef, ProductWithImages } from '@/services/product.service';
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -235,25 +235,17 @@ export default function AdminProductDetailScreen() {
 
   const { product, status, errorMessage, reload } = useProductDetail(id);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   const backToList = () => router.replace('/admin/products');
 
+  const { deletingId, deleteProduct } = useProductDelete();
+
   const handleDelete = async () => {
-    if (!product || deleting) return;
-    setDeleting(true);
+    if (!product || deletingId) return;
 
-    // Service errors come back as results, not throws — an unexpected
-    // rejection (offline, crash mid-request) becomes a failed result so
-    // the busy flag always resets below, on every path.
-    let result: Awaited<ReturnType<typeof deleteProduct>>;
-    try {
-      result = await deleteProduct(product.id);
-    } catch {
-      result = { ok: false, error: 'Something went wrong. Please try again.' };
-    }
-
-    setDeleting(false);
+    // The hook owns the in-flight guard and converts unexpected rejections
+    // into failed results; this handler only routes the outcome.
+    const result = await deleteProduct(product.id);
     setConfirmingDelete(false);
 
     if (result.ok) {
@@ -405,9 +397,9 @@ export default function AdminProductDetailScreen() {
         confirmLabel="Delete"
         cancelLabel="Cancel"
         destructive
-        busy={deleting}
+        busy={deletingId !== null}
         onConfirm={() => void handleDelete()}
-        onCancel={() => !deleting && setConfirmingDelete(false)}
+        onCancel={() => !deletingId && setConfirmingDelete(false)}
       />
     </ThemedView>
   );

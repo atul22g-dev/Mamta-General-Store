@@ -50,6 +50,9 @@ Creates everything: `profiles`, `products`, `product_images`, Row Level Security
 | 0009 | `brand` / `subcategory` / `is_active` + `image_type`; RPC filters to active products |
 | 0010 | Categories/units for this store (`boots`, `toys`, `cloths`, `pair`) |
 | 0011 | Backfills profile rows for auth users that predate the signup trigger |
+| 0012 | Storage policy fix — image/size enforced at bucket level, replace/delete admin-only |
+| 0013 | `visual_search_matches` also returns `product_name`, `selling_price`, `mrp`, `image_url` (one call = identity + price + image + score) |
+| 0014 | Security audit fixes — explicit function EXECUTE grants, full RLS + storage policy contract re-asserted (RLS stays ON/forced) |
 
 CLI alternative for production schema changes: `npx supabase link --project-ref <ref> && npx supabase db push`
 </details>
@@ -194,7 +197,7 @@ src/
     products/             #   catalog services incl. CSV/JSON export & import
     health-service · visual-match/
 supabase/
-  migrations/             # 0001–0011 SQL migrations
+  migrations/             # 0001–0013 SQL migrations
   setup-all-in-one.sql    # ← one-paste complete database setup
   functions/create-staff/ # admin-only account provisioning (Deno)
                           #   server-side only — the app has no staff UI
@@ -206,7 +209,7 @@ scripts/                  # smoke tests + deploy script
 <summary>Architecture rules</summary>
 
 - **Screens → components → tokens** — dependencies point one way; no ad-hoc styling in screens
-- **No database logic in components** — all Supabase access lives in `src/lib/**` services and hooks
+- **No database logic in components** — all Supabase access lives in `src/services/**` (Screen → Hook → Service → Supabase)
 - **Prices come only from the `products` table** — the visual-match layer identifies products; it never invents prices
 - **Secrets stay server-side** — the app bundle holds only the publishable key; account provisioning runs in an Edge Function that verifies the caller's admin role
 - **Theme tokens, never literals** — colours, radii, shadows and type sizes come from `src/constants/**`, so light and dark mode stay in step; a hardcoded `'white'` card is what made the result screen unreadable in dark mode
@@ -222,7 +225,7 @@ Every surface reads from one token set, so a change there restyles the whole app
 | Radius | `src/constants/radius.ts` | `sm 12 · md 16 · lg 20 · xl 28` — soft, block-based geometry |
 | Elevation | `src/constants/shadows.ts` | `sm … xl`; `xl` is the hero level (the matched product, the scan CTA) |
 | Type scale | `src/constants/typography.ts` | `display 36 · h1 30 · h2 21 · h3 17 · body 15 · caption 12` |
-| Prices | `src/components/ui/price-text.tsx` | Prices have their own scale (`hero 40 / card 18 / compact 15`) and tabular figures |
+| Prices | `src/components/common/price-text.tsx` | Prices have their own scale (`hero 40 / card 18 / compact 15`) and tabular figures |
 | Motion | `src/constants/motion.ts` | `fast 150 · base 220 · slow 320`; entrances are skipped when the OS asks for reduced motion |
 
 The palette and style direction come from the bundled **ui-ux-pro-max** skill (`.freebuff/skills/ui-ux-pro-max`), which also carries the review checklists: 4.5:1 text contrast, 44pt touch targets, animated elements kept to one or two per view, and no emoji-as-icon.

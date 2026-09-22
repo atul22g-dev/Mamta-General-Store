@@ -377,8 +377,9 @@ create index if not exists product_images_embedding_hnsw
 -- 2. Similarity search RPC
 --
 -- Given the query embedding for the user photo, returns ranked product
--- candidates. SECURITY DEFINER so anonymous shop-floor users can search
--- without direct read on product_images (RLS stays enforced for DML).
+-- candidates with identity, live price and image in ONE call (migration 0013).
+-- SECURITY DEFINER so anonymous shop-floor users can search without direct
+-- read on product_images (RLS stays enforced for DML).
 -- ----------------------------------------------------------------------------
 
 -- Tunables (session SET, no schema changes needed):
@@ -392,6 +393,10 @@ create or replace function public.visual_search_matches(
 returns table (
   product_id uuid,
   image_id uuid,
+  product_name text,
+  selling_price numeric,
+  mrp numeric,
+  image_url text,
   similarity double precision
 )
 language sql
@@ -402,6 +407,10 @@ as $$
   select
     pi.product_id,
     pi.id as image_id,
+    p.name as product_name,
+    p.selling_price as selling_price,
+    p.mrp as mrp,
+    pi.image_url as image_url,
     1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   where pi.embedding is not null
@@ -416,7 +425,7 @@ grant execute on function public.visual_search_matches(vector(512), double preci
   to anon, authenticated;
 
 comment on function public.visual_search_matches is
-  'Cosine similarity search over product reference image embeddings. Returns product ids + similarity; NEVER prices.';
+  'Cosine similarity search over product reference image embeddings. Returns product_id, image_id, product_name, selling_price, mrp, image_url and similarity. Prices are read live from products — never computed or stored by the embedding layer. NEVER raw embeddings.';
 
 -- ----------------------------------------------------------------------------
 -- 3. Admin maintenance helper: clear embeddings for a product
@@ -546,6 +555,10 @@ create or replace function public.visual_search_matches(
 returns table (
   product_id uuid,
   image_id uuid,
+  product_name text,
+  selling_price numeric,
+  mrp numeric,
+  image_url text,
   similarity double precision
 )
 language sql
@@ -556,6 +569,10 @@ as $$
   select
     pi.product_id,
     pi.id as image_id,
+    p.name as product_name,
+    p.selling_price as selling_price,
+    p.mrp as mrp,
+    pi.image_url as image_url,
     1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   inner join public.products p on p.id = pi.product_id
@@ -572,7 +589,7 @@ grant execute on function public.visual_search_matches(vector(512), double preci
   to anon, authenticated;
 
 comment on function public.visual_search_matches(vector(512), double precision, integer) is
-  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id + image_id + similarity; NEVER prices, NEVER raw embeddings.';
+  'Cosine similarity search over product reference image embeddings. SECURITY DEFINER: anon can search without direct product_images read. Only returns active products. Returns product_id, image_id, product_name, selling_price, mrp, image_url and similarity. Prices are read live from products — never computed or stored by the embedding layer. NEVER raw embeddings.';
 
 -- ============================================================================
 -- ✅ SCHEMA COMPLETE

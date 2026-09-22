@@ -3,28 +3,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { Icon } from '@/components/ui/icon';
-import { Input } from '@/components/ui/input';
-import { SkeletonList } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/ui/empty-state';
-import { ErrorState } from '@/components/ui/error-state';
-import { IconButton } from '@/components/ui/icon-button';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Icon } from '@/components/common/icon';
+import { Input } from '@/components/common/input';
+import { SkeletonList } from '@/components/common/skeleton';
+import { EmptyState } from '@/components/common/empty-state';
+import { ErrorState } from '@/components/common/error-state';
+import { IconButton } from '@/components/common/icon-button';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { useProductSearch } from '@/hooks/use-product-search';
-import { matchSession } from '@/lib/scan-session';
+import { useProductSearch } from '@/hooks/use-catalog-search';
+import { matchSession } from '@/utils/scan-session';
 import {
   PRODUCT_CATEGORIES,
   CATEGORY_LABELS,
   UNIT_LABELS,
   type ProductCategory,
   type ProductUnit,
-} from '@/lib/products/product-validation';
-import type { ProductWithImages } from '@/lib/products/product-service';
-import { formatPriceWithUnit } from '@/lib/format';
-import { PriceText } from '@/components/ui/price-text';
+} from '@/services/product-validation.service';
+import type { ProductWithImages } from '@/services/product.service';
+import { formatPriceWithUnit } from '@/utils/format';
+import { PriceText } from '@/components/common/price-text';
 import { ProductThumb } from '@/components/products/product-thumb';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */

@@ -1,6 +1,7 @@
 -- Mamta General Store: Find Product repair / verification
 -- Run this in Supabase SQL Editor if the remote database is behind the app code.
 -- Safe to re-run. It does NOT create prices or embeddings.
+-- RPC shape matches migration 0013 (identity + live price + image + similarity).
 
 alter table public.products
   add column if not exists brand text;
@@ -26,6 +27,10 @@ create or replace function public.visual_search_matches(
 returns table (
   product_id uuid,
   image_id uuid,
+  product_name text,
+  selling_price numeric,
+  mrp numeric,
+  image_url text,
   similarity double precision
 )
 language sql
@@ -36,6 +41,10 @@ as $$
   select
     pi.product_id,
     pi.id as image_id,
+    p.name as product_name,
+    p.selling_price as selling_price,
+    p.mrp as mrp,
+    pi.image_url as image_url,
     1 - (pi.embedding <=> query_embedding) as similarity
   from public.product_images pi
   join public.products p on p.id = pi.product_id

@@ -8,9 +8,9 @@ import {
   TabListProps,
 } from 'expo-router/ui';
 
-import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
-import { Icon, type IconName } from '@/components/ui/icon';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
+import { Icon, type IconName } from '@/components/common/icon';
 import { MaxContentWidth, Spacing, Radius } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 

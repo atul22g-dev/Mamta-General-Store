@@ -25,32 +25,35 @@ import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, useReducedMotion } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Icon } from '@/components/ui/icon';
-import { IconButton } from '@/components/ui/icon-button';
-import { ImageViewer } from '@/components/ui/image-viewer';
-import { PriceText } from '@/components/ui/price-text';
+import { ThemedText } from '@/components/common/themed-text';
+import { ThemedView } from '@/components/common/themed-view';
+import { Badge } from '@/components/common/badge';
+import { Button } from '@/components/common/button';
+import { EmptyState } from '@/components/common/empty-state';
+import { Icon } from '@/components/common/icon';
+import { IconButton } from '@/components/common/icon-button';
+import { ImageViewer } from '@/components/common/image-viewer';
+import { PriceText } from '@/components/common/price-text';
 import { ProductThumb } from '@/components/products/product-thumb';
 import { MaxContentWidth, Motion, Radius, Shadows, Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { formatPrice, formatPriceWithUnit } from '@/lib/format';
-import type { ProductWithImages } from '@/lib/products/product-service';
+import { formatPrice, formatPriceWithUnit } from '@/utils/format';
+import type { ProductWithImages } from '@/services/product.service';
 import {
   CATEGORY_LABELS,
   UNIT_LABELS,
   type ProductCategory,
   type ProductUnit,
-} from '@/lib/products/product-validation';
-import { stockLabel, stockTone } from '@/lib/stock';
-import type { MatchCandidateView } from '@/lib/visual-match/client';
-import type { VisualMatchOutcome } from '@/lib/visual-match/types-client';
-import { analyzeMatchOutcome } from '@/lib/visual-match/decision';
-import { matchSession } from '@/lib/scan-session';
-import { MAIN_MATCH_THRESHOLD, MAX_SIMILAR_PRODUCTS } from '@/lib/visual-match/thresholds';
+} from '@/services/product-validation.service';
+import { stockLabel, stockTone } from '@/utils/stock';
+import type { VisualMatchOutcome } from '@/types/product';
+import {
+  rankCandidates,
+  type RankedCandidate,
+} from '@/services/ranking.service';
+import { analyzeMatchOutcome } from '@/services/decision.service';
+import { matchSession } from '@/utils/scan-session';
+import { MAX_SIMILAR_PRODUCTS } from '@/config/visual-match';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,25 +90,9 @@ function savePercent(product: ProductWithImages): number {
 
 type ThemeTokens = ReturnType<typeof useTheme>;
 
-type MatchTier = { label: string; color: string };
-
-/**
- * Turns a raw score into words a shopkeeper uses. The bands are anchored to
- * the SHIPPED threshold rather than a second copy of it: anything the app is
- * willing to call "identified" is at least a strong match, and the extra
- * distance to a near-perfect score is what earns "exact".
- */
-function matchTier(similarity: number, theme: ThemeTokens): MatchTier {
-  if (similarity >= 0.9) return { label: 'Exact match', color: theme.success };
-  if (similarity >= MAIN_MATCH_THRESHOLD) return { label: 'Strong match', color: theme.accent };
-  return { label: 'Close match', color: theme.warning };
-}
-
-/** Badge tone for a similar-product score — same bands, badge vocabulary. */
-function scoreBadgeVariant(similarity: number): 'success' | 'warning' | 'neutral' {
-  if (similarity >= 0.9) return 'success';
-  if (similarity >= MAIN_MATCH_THRESHOLD) return 'warning';
-  return 'neutral';
+/** Colors for each presentation tier — green only for a likely match. */
+function tierColor(tier: RankedCandidate['tier'], theme: ThemeTokens): string {
+  return tier === 'likely_match' ? theme.success : theme.warning;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,13 +151,14 @@ function YourPhoto({
 
 /**
  * How well the photo and the catalogue image agreed — as a labelled bar.
- * A bare "100% match" reads as a promise; "Match strength · exact" plus a
- * nearly-full bar reads as evidence, which is what it actually is.
+ * A bare "100% match" reads as a promise; "Match strength · Likely match"
+ * plus a nearly-full bar reads as evidence, which is what it actually is.
+ * The tier comes from the CONFIGURED bands (ranking.ts), not a local number.
  */
-function MatchMeter({ similarity }: { similarity: number }) {
+function MatchMeter({ candidate }: { candidate: RankedCandidate }) {
   const theme = useTheme();
-  const tier = matchTier(similarity, theme);
-  const percent = Math.round(Math.max(0, Math.min(1, similarity)) * 100);
+  const percent = Math.round(Math.max(0, Math.min(1, candidate.similarity)) * 100);
+  const color = tierColor(candidate.tier, theme);
 
   return (
     <View style={styles.meterBlock}>
@@ -178,15 +166,15 @@ function MatchMeter({ similarity }: { similarity: number }) {
         <ThemedText type="caption" themeColor="textTertiary">
           Match strength
         </ThemedText>
-        <ThemedText type="caption" style={{ color: tier.color }}>
-          {percent}% · {tier.label}
+        <ThemedText type="caption" style={{ color }}>
+          {percent}% · {candidate.tierLabel}
         </ThemedText>
       </View>
       <View
         style={[styles.meterTrack, { backgroundColor: theme.surfaceSecondary }]}
         accessibilityRole="progressbar"
         accessibilityLabel={`Match strength ${percent} percent`}>
-        <View style={[styles.meterFill, { width: `${percent}%`, backgroundColor: tier.color }]} />
+        <View style={[styles.meterFill, { width: `${percent}%`, backgroundColor: color }]} />
       </View>
     </View>
   );
@@ -198,11 +186,12 @@ function MatchMeter({ similarity }: { similarity: number }) {
 
 function MainMatchCard({
   product,
-  similarity,
+  candidate,
   scored,
 }: {
   product: ProductWithImages;
-  similarity: number;
+  /** Ranked candidate for photo matches (score + configured tier). */
+  candidate: RankedCandidate | null;
   /** False for a manual catalog pick: no comparison happened, so no score. */
   scored: boolean;
 }) {
@@ -213,7 +202,6 @@ function MainMatchCard({
   const firstImage = product.product_images[0]?.image_url;
   const discounted = hasDiscount(product);
   const percentOff = savePercent(product);
-  const tier = matchTier(similarity, theme);
   const stockToneValue = stockTone(product.stock);
 
   return (
@@ -240,11 +228,15 @@ function MainMatchCard({
 
         {/* Score pill on the photo: a dark scrim + white label stays legible
             over ANY product photo, which a tinted pill cannot promise. */}
-        {scored && (
+        {scored && candidate && (
           <View style={[styles.heroScore, { backgroundColor: theme.scrim }]}>
-            <Icon name="checkmark-circle" size={15} color={tier.color} />
+            <Icon
+              name={candidate.tier === 'likely_match' ? 'checkmark-circle' : 'help-circle-outline'}
+              size={15}
+              color={tierColor(candidate.tier, theme)}
+            />
             <ThemedText type="caption" style={{ color: theme.white }}>
-              {confidencePercent(similarity)} match
+              {candidate.tierLabel} · {confidencePercent(candidate.similarity)}
             </ThemedText>
           </View>
         )}
@@ -285,7 +277,7 @@ function MainMatchCard({
           )}
         </View>
 
-        {scored && <MatchMeter similarity={similarity} />}
+        {scored && candidate && <MatchMeter candidate={candidate} />}
       </View>
 
       <ImageViewer
@@ -306,7 +298,7 @@ function SimilarProductCard({
   candidate,
   onPress,
 }: {
-  candidate: MatchCandidateView;
+  candidate: RankedCandidate;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -348,8 +340,14 @@ function SimilarProductCard({
       </View>
 
       <Badge
-        label={confidencePercent(candidate.similarity)}
-        variant={scoreBadgeVariant(candidate.similarity)}
+        label={candidate.tierLabel}
+        variant={
+          candidate.tier === 'likely_match'
+            ? 'success'
+            : candidate.tier === 'similar_product'
+              ? 'accent'
+              : 'neutral'
+        }
         size="sm"
       />
     </Pressable>
@@ -357,15 +355,37 @@ function SimilarProductCard({
 }
 
 // ---------------------------------------------------------------------------
-// Similar Products Section
+// Candidate sections — ONE chassis, two honest labels
 // ---------------------------------------------------------------------------
 
-function SimilarProductsSection({
+/** The props both candidate sections pass through unchanged. */
+type SectionListProps = {
+  products: RankedCandidate[];
+  onSelect: (candidate: RankedCandidate) => void;
+};
+
+/**
+ * The ONE section chassis shared by the Similar and Related lists: animated
+ * entrance (reduced-motion aware), heading + count, intro line, the ranked
+ * card list and the explanatory legend row. This ~30-line JSX tree used to
+ * exist twice — once per section — so every layout or a11y change had to be
+ * made in two places. Only the copy, the count noun and the entrance delay
+ * differ between the two.
+ */
+function CandidateSection({
+  title,
+  countNoun,
+  intro,
+  legend,
+  delay,
   products,
   onSelect,
-}: {
-  products: MatchCandidateView[];
-  onSelect: (product: MatchCandidateView) => void;
+}: SectionListProps & {
+  title: string;
+  countNoun: 'candidate' | 'suggestion';
+  intro: string;
+  legend: string;
+  delay: number;
 }) {
   const reduceMotion = useReducedMotion();
   const theme = useTheme();
@@ -374,16 +394,17 @@ function SimilarProductsSection({
 
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.duration(Motion.slow).delay(120)}
+      entering={reduceMotion ? undefined : FadeInDown.duration(Motion.slow).delay(delay)}
       style={styles.section}>
       <View style={styles.sectionHead}>
-        <ThemedText type="h3">Closest alternatives</ThemedText>
+        <ThemedText type="h3">{title}</ThemedText>
         <ThemedText type="caption" themeColor="textTertiary">
-          {products.length} candidate{products.length === 1 ? '' : 's'}
+          {products.length} {countNoun}
+          {products.length === 1 ? '' : 's'}
         </ThemedText>
       </View>
       <ThemedText type="caption" themeColor="textTertiary">
-        Not the item you meant? These looked closest to your photo.
+        {intro}
       </ThemedText>
       <View style={styles.similarList}>
         {products.slice(0, MAX_SIMILAR_PRODUCTS).map((candidate) => (
@@ -394,15 +415,51 @@ function SimilarProductsSection({
           />
         ))}
       </View>
-      {/* Colour is never the only signal: the badge carries a number too. */}
+      {/* Colour is never the only signal: the badge carries a label too, and
+          the legend explains the ordering honestly. */}
       <View style={styles.legendRow}>
         <Icon name="information-circle-outline" size={13} color={theme.textTertiary} />
         <ThemedText type="caption" themeColor="textTertiary" style={styles.legendText}>
-          The percentage is how closely each photo matched yours. Prices always come from the
-          store database.
+          {legend}
         </ThemedText>
       </View>
     </Animated.View>
+  );
+}
+
+function SimilarProductsSection({ products, onSelect }: SectionListProps) {
+  return (
+    <CandidateSection
+      title="Closest alternatives"
+      countNoun="candidate"
+      intro="Not the item you meant? These looked closest to your photo."
+      legend="Results are ranked by how closely each product photo matched yours. Prices always come from the store database."
+      delay={120}
+      products={products}
+      onSelect={onSelect}
+    />
+  );
+}
+
+/**
+ * Related products — the honest tier for colour variants, different packaging
+ * and similar-looking items (measured 0.15–0.55 on the two-signal score).
+ * Previously these were DROPPED below the similar floor, so a photo of a
+ * different-colour variant produced a dead "Product not found". They are now
+ * tap-able suggestions — clearly labelled, never claimed as a match — so the
+ * user can switch to one exactly like a similar product.
+ */
+function RelatedProductsSection({ products, onSelect }: SectionListProps) {
+  return (
+    <CandidateSection
+      title="Related products"
+      countNoun="suggestion"
+      intro="Same shelf, other looks — different colours or similar packaging. Not a match for your photo, but maybe what you meant."
+      legend="These are not matches for your photo — offered in case one is the item you meant. Prices come from the store database."
+      delay={180}
+      products={products}
+      onSelect={onSelect}
+    />
   );
 }
 
@@ -413,15 +470,21 @@ function SimilarProductsSection({
 /** Where the featured product came from — a photo match, or a manual pick. */
 type ResultSource = 'match' | 'catalog';
 
-/** The product the screen features, plus the score it was matched at. */
-type FeaturedMatch = { product: ProductWithImages; similarity: number; source: ResultSource };
+/** The product the screen features. */
+type FeaturedMatch = { product: ProductWithImages; candidate: RankedCandidate | null; source: ResultSource };
 
 /** Everything the screen needs in order to render. */
 type ResultView = {
   featured: FeaturedMatch | null;
   /** Ranked alternates, excluding the featured product. */
-  similar: MatchCandidateView[];
-  /** The match ran, but nothing in the catalog was close enough. */
+  similar: RankedCandidate[];
+  /**
+   * Related-tier candidates (below the similar band, above the noise floor):
+   * colour variants, other packaging, similar-looking products. Rendered as
+   * tap-able suggestions — never labelled or presented as a match.
+   */
+  related: RankedCandidate[];
+  /** The match ran, but nothing cleared the configured similarity floor. */
   notFound: boolean;
   /** No match has been run yet (the screen was opened directly). */
   noSession: boolean;
@@ -430,44 +493,50 @@ type ResultView = {
 /**
  * Resolve the screen's state in ONE place.
  *
- * Precedence is the user-facing contract: a manual pick beats a candidate the
- * user tapped, which beats the automatic main match. Pulling it out of the
- * component body keeps that precedence readable on its own and leaves the
- * render code a flat list of decisions.
+ * Ranking rule (the point of this screen): ALL candidates from the photo go
+ * through rankCandidates(), which de-duplicates per product, sorts by
+ * similarity and applies the CONFIGURED tier bands. The primary product is
+ * promoted ONLY from a likely-match top candidate — a medium/low score is
+ * presented as a similar product with its honest label, never as "the
+ * product you photographed".
+ *
+ * Precedence: a manual pick beats a candidate the user tapped, which beats
+ * the automatic ranking.
  */
 function resolveResultView(
   outcome: VisualMatchOutcome | null,
   manualProduct: ProductWithImages | null,
-  selectedCandidate: MatchCandidateView | null,
+  selectedCandidate: RankedCandidate | null,
 ): ResultView {
-  const decision = outcome ? analyzeMatchOutcome(outcome) : null;
+  // Rank once: primary (only when the top score is a likely match) + similar.
+  const all = outcome
+    ? [...(outcome.main_match ? [outcome.main_match] : []), ...outcome.similar_products, ...outcome.all_candidates]
+    : [];
+  const ranked = rankCandidates(all);
 
   let featured: FeaturedMatch | null = null;
   if (manualProduct) {
     // Manual search: the real DB price, with no invented similarity score.
-    featured = { product: manualProduct, similarity: 0, source: 'catalog' };
+    featured = { product: manualProduct, candidate: null, source: 'catalog' };
   } else if (selectedCandidate) {
-    featured = {
-      product: selectedCandidate.product,
-      similarity: selectedCandidate.similarity,
-      source: 'match',
-    };
-  } else if (decision?.kind === 'single' && outcome?.main_match) {
-    featured = {
-      product: outcome.main_match.product,
-      similarity: outcome.main_match.similarity,
-      source: 'match',
-    };
+    featured = { product: selectedCandidate.product, candidate: selectedCandidate, source: 'match' };
+  } else if (ranked.primary) {
+    featured = { product: ranked.primary.product, candidate: ranked.primary, source: 'match' };
   }
 
-  const similar = (outcome?.similar_products ?? []).filter(
+  const similar = ranked.similar.filter(
+    (candidate) => candidate.product.id !== featured?.product.id,
+  );
+  const related = ranked.related.filter(
     (candidate) => candidate.product.id !== featured?.product.id,
   );
 
+  const decision = outcome ? analyzeMatchOutcome(outcome) : null;
   return {
     featured,
     similar,
-    notFound: decision?.kind === 'none' && featured === null,
+    related,
+    notFound: !featured && !ranked.hasResults && decision?.kind !== 'ambiguous',
     noSession: outcome === null && manualProduct === null,
   };
 }
@@ -600,9 +669,9 @@ export default function FindProductResultScreen() {
 
   const visual = matchSession.getResult();
   const manualProduct = matchSession.getManualResult();
-  const [selectedCandidate, setSelectedCandidate] = useState<MatchCandidateView | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<RankedCandidate | null>(null);
 
-  const { featured, similar, notFound, noSession } = resolveResultView(
+  const { featured, similar, related, notFound, noSession } = resolveResultView(
     visual?.outcome ?? null,
     manualProduct,
     selectedCandidate,
@@ -624,7 +693,7 @@ export default function FindProductResultScreen() {
     router.push('/find-product/search');
   }, [router]);
 
-  const handleSelectSimilar = useCallback((candidate: MatchCandidateView) => {
+  const handleSelectSimilar = useCallback((candidate: RankedCandidate) => {
     setSelectedCandidate(candidate);
   }, [setSelectedCandidate]);
 
@@ -648,7 +717,16 @@ export default function FindProductResultScreen() {
   // Main result view
   return (
     <ThemedView style={styles.container}>
-      <ResultHeader title={featured ? 'Product Found' : 'Similar Products'} onClose={handleDone} />
+      <ResultHeader
+        title={
+          featured
+            ? 'Product Found'
+            : similar.length > 0
+              ? 'Similar Products'
+              : 'Related Products'
+        }
+        onClose={handleDone}
+      />
 
       <SafeAreaView style={styles.flex} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -662,11 +740,11 @@ export default function FindProductResultScreen() {
             }
           />
 
-          {/* The answer */}
+          {/* The answer — shown with its honest tier, or unscored for a pick */}
           {featured && (
             <MainMatchCard
               product={featured.product}
-              similarity={featured.similarity}
+              candidate={featured.candidate}
               scored={featured.source === 'match'}
             />
           )}
@@ -679,6 +757,12 @@ export default function FindProductResultScreen() {
           {/* Similar products */}
           {similar.length > 0 && (
             <SimilarProductsSection products={similar} onSelect={handleSelectSimilar} />
+          )}
+
+          {/* Related products — colour variants / lookalikes: honest, tap-able,
+              never claimed as a match. This is what used to be a dead end. */}
+          {related.length > 0 && (
+            <RelatedProductsSection products={related} onSelect={handleSelectSimilar} />
           )}
 
           {/* Bottom actions */}
