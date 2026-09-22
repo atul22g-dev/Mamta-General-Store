@@ -15,6 +15,10 @@
  * Deploy: supabase functions deploy create-staff --no-verify-jwt=false
  */
 
+// STATIC npm specifier — see visual-match/index.ts: a dynamic import of a
+// remote URL is absent from the deployed module graph and fails at runtime.
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -39,8 +43,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-
     // --- AuthZ: caller must be a signed-in admin ---
     const authHeader = req.headers.get('Authorization') ?? '';
     const userClient = createClient(

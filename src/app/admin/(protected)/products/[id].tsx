@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FlatList, Image, Pressable, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ImageViewer } from '@/components/ui/image-viewer';
+import { ProductThumb } from '@/components/products/product-thumb';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, Radius, Shadows } from '@/constants';
@@ -94,10 +95,12 @@ function ProductGallery({ product }: { product: ProductWithImages }) {
                 { width: windowWidth },
                 pressed && styles.pressed,
               ]}>
-              <Image
-                source={{ uri: getProductImageUrl(item.image_url) ?? undefined }}
+              <ProductThumb
+                imageUrl={item.image_url}
+                name={product.name}
+                radius={0}
+                textType="display"
                 style={styles.slideImage}
-                resizeMode="cover"
               />
             </Pressable>
           )}
@@ -105,7 +108,14 @@ function ProductGallery({ product }: { product: ProductWithImages }) {
 
         {/* Counter chip "1 / 3" (Flipkart-style), top-right. */}
         {images.length > 1 && (
-          <View style={[styles.counterChip, styles.pointerNone]}>
+          <View
+            style={[
+              styles.counterChip,
+              styles.pointerNone,
+              // Photo-overlay scrim, not a plain black tint: white text on this
+              // clears 12:1 over a bright product photo too.
+              { backgroundColor: theme.scrim },
+            ]}>
             <ThemedText type="caption" style={styles.counterText}>
               {heroIndex + 1} / {images.length}
             </ThemedText>
@@ -153,8 +163,11 @@ function ProductGallery({ product }: { product: ProductWithImages }) {
                 listRef.current?.scrollToIndex({ index, animated: true });
               }}
               style={({ pressed }: { pressed: boolean }) => [pressed && styles.pressed]}>
-              <Image
-                source={{ uri: getProductImageUrl(item.image_url) ?? undefined }}
+              <ProductThumb
+                imageUrl={item.image_url}
+                name={product.name}
+                size={64}
+                radius={Radius.sm}
                 style={[
                   styles.thumbImage,
                   index === heroIndex && { borderWidth: 2, borderColor: theme.accent },
@@ -447,7 +460,8 @@ const styles = StyleSheet.create({
   slideImage: {
     width: '100%',
     aspectRatio: 1,
-    backgroundColor: 'rgba(100,116,139,0.12)',
+    // No placeholder colour here: ProductThumb paints its own themed one,
+    // and this style is applied last (so a literal would override it).
     objectFit: 'cover',
   },
   counterChip: {
@@ -455,7 +469,7 @@ const styles = StyleSheet.create({
     top: Spacing.two,
     right: Spacing.two,
     borderRadius: Radius.sm,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    // Background is the themed scrim (set at the call site).
     paddingHorizontal: Spacing.two,
     paddingVertical: 2,
   },
@@ -509,7 +523,6 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: Radius.sm,
     marginRight: Spacing.two,
-    backgroundColor: 'rgba(100,116,139,0.12)',
   },
 
   identity: {

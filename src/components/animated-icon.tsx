@@ -15,13 +15,10 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing, Radius, Shadows } from '@/constants';
+import { APP_ICON_SOURCE, Spacing, Radius, Shadows } from '@/constants';
 
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
-
-/** Single source for the store icon everywhere it is displayed. */
-export const APP_ICON_SOURCE = require('@/assets/images/play_store_512.png');
 
 /**
  * Native startup screen — modern brand launch:

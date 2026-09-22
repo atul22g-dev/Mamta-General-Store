@@ -1,4 +1,4 @@
-import { FlatList, Image, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -25,7 +25,7 @@ import {
 import type { ProductWithImages } from '@/lib/products/product-service';
 import { formatPriceWithUnit } from '@/lib/format';
 import { PriceText } from '@/components/ui/price-text';
-import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import { ProductThumb } from '@/components/products/product-thumb';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
@@ -44,7 +44,6 @@ function SearchResultRow({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
   const unitLabel = UNIT_LABELS[product.unit as ProductUnit] ?? product.unit;
 
   return (
@@ -58,15 +57,12 @@ function SearchResultRow({
         Shadows.sm,
         pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
       ]}>
-      {firstImage ? (
-        <Image source={{ uri: firstImage }} style={styles.rowThumb} />
-      ) : (
-        <View style={[styles.rowThumb, styles.rowThumbFallback]}>
-          <ThemedText type="bodySmall" style={{ color: theme.accent }}>
-            {product.name.charAt(0).toUpperCase()}
-          </ThemedText>
-        </View>
-      )}
+      <ProductThumb
+        imageUrl={product.product_images[0]?.image_url}
+        name={product.name}
+        size={48}
+        textType="bodySmall"
+      />
 
       <View style={styles.rowInfo}>
         <ThemedText type="body" numberOfLines={1}>
@@ -236,18 +232,19 @@ function Chip({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: active ? theme.accent : theme.surface,
-          borderColor: active ? theme.accent : theme.border,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}>
+      accessibilityState={{ selected: active }}        style={({ pressed }) => [
+          styles.chip,
+          {
+            // Selected = soft accent fill + accent outline; readable in both
+            // colour schemes (a solid accent fill is not, at this text size).
+            backgroundColor: active ? theme.accentSoft : theme.surface,
+            borderColor: active ? theme.accent : theme.border,
+            opacity: pressed ? 0.8 : 1,
+          },
+        ]}>
       <ThemedText
         type="caption"
-        style={{ color: active ? theme.white : theme.textSecondary }}>
+        style={{ color: active ? theme.accentDark : theme.textSecondary }}>
         {label}
       </ThemedText>
     </Pressable>
@@ -325,15 +322,5 @@ const styles = StyleSheet.create({
   rowInfo: {
     flex: 1,
     gap: Spacing.half,
-  },
-  rowThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(100,116,139,0.12)',
-  },
-  rowThumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

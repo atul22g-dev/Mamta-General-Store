@@ -2,12 +2,22 @@
  * Image pipeline utilities for Find Product.
  *
  * Validates, normalizes, and converts images captured/picked by the user
- * into the format expected by the MobileCLIP-S0 embedding engine:
+ * into the format the embedding engine expects:
  *   data:image/(jpeg|png);base64,...
  *
  * Supported formats: JPEG, PNG (HEIC is transcoded to JPEG by
  * expo-image-picker on iOS; the picker never returns raw HEIC bytes).
  * WebP is NOT supported (no decoder in the Deno edge function).
+ *
+ * TWO WAYS TO READ A PICKED PHOTO (both needed — see readImageBytes):
+ *   • `file://` on a device → expo-file-system's File API, because React
+ *     Native's fetch does not reliably read file:// URIs on Android's new
+ *     architecture (it fails with an opaque network error).
+ *   • everything else, including every browser pick → fetch(). expo-file-system
+ *     does NOT exist on web, so reading a picked photo with it made the whole
+ *     Find Product flow fail on the browser build before the request was ever
+ *     sent: the picker returned a `blob:` URI, the read failed, and the screen
+ *     sat there with "Could not read the image file".
  */
 
 /** Supported image MIME types for the embedding pipeline. */
@@ -30,6 +40,87 @@ export type ImagePipelineResult =
   | { ok: true; dataUri: string; mimeType: string; byteLength: number }
   | { ok: false; error: ImagePipelineError; errorMessage: string };
 
+/** A device-local path (native) as opposed to something fetch() can read. */
+function isDeviceFilePath(uri: string): boolean {
+  return /^file:|^content:/i.test(uri);
+}
+
+type ReadOutcome =
+  | { kind: 'bytes'; bytes: Uint8Array; contentType: string | null }
+  /** A `file://` path that is genuinely gone (uninstalled/cleared cache). */
+  | { kind: 'missing' };
+
+/**
+ * The one place a picked photo's bytes are read.
+ *
+ * `file:`/`content:` paths go through expo-file-system; anything else (blob:,
+ * data:, http(s): — i.e. every browser pick and every preview) goes through
+ * fetch. A `file:` path is only reported missing when the file API actually
+ * answered, so the web build degrades to fetch instead of claiming the photo
+ * disappeared.
+ */
+async function readImageBytes(uri: string): Promise<ReadOutcome> {
+  if (isDeviceFilePath(uri)) {
+    try {
+      const { File } = await import('expo-file-system');
+      const file = new File(uri);
+      if (!file.exists) return { kind: 'missing' };
+      return { kind: 'bytes', bytes: new Uint8Array(await file.arrayBuffer()), contentType: null };
+    } catch {
+      // expo-file-system has no web implementation — fall through to fetch.
+    }
+  }
+
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error(`Could not read the image (HTTP ${response.status}).`);
+  }
+  return {
+    kind: 'bytes',
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    contentType: response.headers.get('content-type'),
+  };
+}
+
+/**
+ * Size of a picked photo WITHOUT reading its pixels: the device path answers
+ * from file metadata, the browser path from the blob's length. Used by
+ * validateImageFile so an oversized photo is rejected before anything is read
+ * into memory.
+ */
+async function measureImage(uri: string): Promise<{ kind: 'size'; size: number } | { kind: 'missing' }> {
+  if (isDeviceFilePath(uri)) {
+    try {
+      const { File } = await import('expo-file-system');
+      const file = new File(uri);
+      if (!file.exists) return { kind: 'missing' };
+      if (typeof file.size === 'number') return { kind: 'size', size: file.size };
+      return { kind: 'size', size: (await file.arrayBuffer()).byteLength };
+    } catch {
+      // expo-file-system has no web implementation — fall through to fetch.
+    }
+  }
+
+  const response = await fetch(uri);
+  if (!response.ok) {
+    throw new Error(`Could not read the image (HTTP ${response.status}).`);
+  }
+  return { kind: 'size', size: (await response.blob()).size };
+}
+
+/**
+ * Blob/data URLs carry no file extension, so prefer what the response says it
+ * is and fall back to the URI's extension (the device path).
+ */
+function resolveMimeType(uri: string, contentType: string | null): string {
+  const fromResponse = contentType?.split(';')[0].trim().toLowerCase();
+  if (fromResponse && SUPPORTED_MIME_TYPES.includes(fromResponse as (typeof SUPPORTED_MIME_TYPES)[number])) {
+    return fromResponse;
+  }
+  if (fromResponse === 'image/jpg') return 'image/jpeg';
+  return detectMimeTypeFromUri(uri);
+}
+
 /**
  * Validates a file URI before reading. Checks:
  * 1. URI is non-empty
@@ -41,15 +132,13 @@ export type ImagePipelineResult =
 export async function validateImageFile(
   fileUri: string,
 ): Promise<{ ok: true; size: number } | { ok: false; error: ImagePipelineError; errorMessage: string }> {
-  if (!fileUri || !fileUri.trim()) {
+  if (!fileUri?.trim()) {
     return { ok: false, error: 'file_not_found', errorMessage: 'No image selected.' };
   }
 
   try {
-    const { File } = await import('expo-file-system');
-    const file = new File(fileUri);
-
-    if (!file.exists) {
+    const outcome = await measureImage(fileUri);
+    if (outcome.kind === 'missing') {
       return {
         ok: false,
         error: 'file_not_found',
@@ -57,25 +146,21 @@ export async function validateImageFile(
       };
     }
 
-    // Read a small portion to check size without loading the whole file.
-    const buffer = await file.arrayBuffer();
-    const byteLength = buffer.byteLength;
-
-    if (byteLength > MAX_IMAGE_BYTES) {
-      const sizeMB = (byteLength / (1024 * 1024)).toFixed(1);
+    const size = outcome.size;
+    if (size > MAX_IMAGE_BYTES) {
       return {
         ok: false,
         error: 'file_too_large',
-        errorMessage: `Image is too large (${sizeMB} MB). Maximum size is 5 MB.`,
+        errorMessage: `Image is too large (${(size / (1024 * 1024)).toFixed(1)} MB). Maximum size is 5 MB.`,
       };
     }
 
-    return { ok: true, size: byteLength };
-  } catch {
+    return { ok: true, size };
+  } catch (error) {
     return {
       ok: false,
       error: 'read_failed',
-      errorMessage: 'Could not read the image file.',
+      errorMessage: error instanceof Error ? error.message : 'Could not read the image file.',
     };
   }
 }
@@ -112,52 +197,41 @@ export function detectMimeTypeFromUri(uri: string): string {
  * @returns data URI ready for the embedding engine
  */
 export async function validateAndConvert(fileUri: string): Promise<ImagePipelineResult> {
-  // Step 1: Validate file exists and size
-  const validation = await validateImageFile(fileUri);
-  if (!validation.ok) {
-    return { ok: false, error: validation.error, errorMessage: validation.errorMessage };
+  if (!fileUri?.trim()) {
+    return { ok: false, error: 'file_not_found', errorMessage: 'No image selected.' };
   }
 
-  // Step 2: Read bytes
-  let bytes: Uint8Array;
   try {
-    const { File } = await import('expo-file-system');
-    const file = new File(fileUri);
-    const buffer = await file.arrayBuffer();
-    bytes = new Uint8Array(buffer);
-  } catch {
+    const outcome = await readImageBytes(fileUri);
+    if (outcome.kind === 'missing') {
+      return { ok: false, error: 'file_not_found', errorMessage: 'The selected image is no longer available. Pick it again.' };
+    }
+
+    const { bytes, contentType } = outcome;
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      return { ok: false, error: 'file_too_large', errorMessage: 'Image is too large. Maximum size is 5 MB.' };
+    }
+
+    const mimeType = resolveMimeType(fileUri, contentType);
+    if (!SUPPORTED_MIME_TYPES.includes(mimeType as (typeof SUPPORTED_MIME_TYPES)[number])) {
+      return { ok: false, error: 'unsupported_format', errorMessage: 'Unsupported image format. Use JPEG or PNG.' };
+    }
+
+    const { bytesToBase64 } = await import('@/lib/visual-match/base64');
+    const dataUri = `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+
+    if (dataUri.length > MAX_DATA_URI_CHARS) {
+      return { ok: false, error: 'file_too_large', errorMessage: 'Image is too large for analysis. Try a smaller photo.' };
+    }
+
+    return { ok: true, dataUri, mimeType, byteLength: bytes.byteLength };
+  } catch (error) {
     return {
       ok: false,
       error: 'read_failed',
-      errorMessage: 'Could not read the image file. Try again.',
+      errorMessage: error instanceof Error ? error.message : 'Could not read the image file. Try again.',
     };
   }
-
-  // Step 3: Detect MIME type
-  const mimeType = detectMimeTypeFromUri(fileUri);
-  if (!SUPPORTED_MIME_TYPES.includes(mimeType as (typeof SUPPORTED_MIME_TYPES)[number])) {
-    return {
-      ok: false,
-      error: 'unsupported_format',
-      errorMessage: `Unsupported image format. Use JPEG or PNG.`,
-    };
-  }
-
-  // Step 4: Convert to base64 data URI
-  const { bytesToBase64 } = await import('@/lib/visual-match/base64');
-  const base64 = bytesToBase64(bytes);
-  const dataUri = `data:${mimeType};base64,${base64}`;
-
-  // Step 5: Validate final data URI size
-  if (dataUri.length > MAX_DATA_URI_CHARS) {
-    return {
-      ok: false,
-      error: 'file_too_large',
-      errorMessage: 'Image is too large for analysis. Try a smaller photo.',
-    };
-  }
-
-  return { ok: true, dataUri, mimeType, byteLength: bytes.length };
 }
 
 /**

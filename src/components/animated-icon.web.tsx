@@ -2,12 +2,10 @@ import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 import Animated, { Keyframe, Easing } from 'react-native-reanimated';
 
+import { APP_ICON_SOURCE } from '@/constants';
 import classes from './animated-icon.module.css';
 
 const DURATION = 300;
-
-/** Single source for the store icon everywhere it is displayed (web). */
-const APP_ICON_SOURCE = require('@/assets/images/play_store_512.png');
 
 /**
  * Web startup screen lives in the pre-hydration shell (src/app/+html.tsx)

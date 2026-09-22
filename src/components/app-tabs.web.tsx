@@ -68,14 +68,17 @@ export function TabButton({
             borderRadius: Radius.full,
           },
         ]}>
+        {/* `accentDark` rather than `accent` for the active state: on the soft
+            green pill it clears 4.5:1 in light mode (accent itself does not),
+            and in dark mode it resolves to the light green — correct both ways. */}
         <Icon
           name={isFocused ? activeIcon : icon}
           size={16}
-          color={isFocused ? theme.accent : theme.textSecondary}
+          color={isFocused ? theme.accentDark : theme.textSecondary}
         />
         <ThemedText
           type="smallBold"
-          themeColor={isFocused ? 'accent' : 'textSecondary'}>
+          style={{ color: isFocused ? theme.accentDark : theme.textSecondary }}>
           {children}
         </ThemedText>
       </ThemedView>

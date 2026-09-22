@@ -21,13 +21,55 @@ import {
   SIMILAR_PRODUCT_THRESHOLD,
   AMBIGUOUS_MARGIN,
   VISUAL_MATCH_TIMEOUT_MS,
-  VISUAL_MATCH_MAX_IMAGE_BYTES,
 } from '@/lib/visual-match/thresholds';
 import { isValidEmbeddingDataUri } from '@/lib/image-pipeline';
 
 export type { MatchCandidateView, VisualMatchOutcome };
 
 type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/** Read the real JSON error returned by the Supabase Edge Function. */
+async function readEdgeError(error: unknown): Promise<string | null> {
+  if (!error || typeof error !== 'object') return null;
+  const context = (error as { context?: unknown }).context;
+  if (!context || typeof context !== 'object') return null;
+
+  const response = context as {
+    clone?: () => Response;
+    status?: number;
+    text?: () => Promise<string>;
+  };
+
+  try {
+    const body = typeof response.clone === 'function'
+      ? await response.clone().text()
+      : typeof response.text === 'function'
+        ? await response.text()
+        : '';
+
+    if (body) {
+      try {
+        const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+        if (typeof parsed.error === 'string' && parsed.error.trim()) {
+          return parsed.error;
+        }
+        if (typeof parsed.message === 'string' && parsed.message.trim()) {
+          return parsed.message;
+        }
+      } catch {
+        if (body.length < 300) return body;
+      }
+    }
+
+    if (typeof response.status === 'number' && response.status > 0) {
+      return `Find Product server error (HTTP ${response.status}).`;
+    }
+  } catch {
+    // Fall through to the normal Supabase error mapper.
+  }
+
+  return null;
+}
 
 /**
  * Combines the caller's abort signal with a hard timeout. The timeout is
@@ -109,7 +151,7 @@ export async function matchProductFromPhoto(
     return {
       ok: false,
       error:
-        dataUri.length > VISUAL_MATCH_MAX_IMAGE_BYTES
+        dataUri.length > 7_000_000
           ? 'The captured photo is too large to analyze.'
           : 'The captured photo could not be read for analysis.',
     };
@@ -125,7 +167,14 @@ export async function matchProductFromPhoto(
     });
 
     if (error) {
-      return { ok: false, error: toUserMessage(error, 'Visual matching is unavailable right now.') };
+      // Supabase's FunctionsHttpError stores the actual Edge Function response
+      // in `context` (a Response). Reading that body gives us the real backend
+      // error instead of the useless generic "non-2xx status code" message.
+      const edgeDetail = await readEdgeError(error);
+      return {
+        ok: false,
+        error: edgeDetail ?? toUserMessage(error, 'Visual matching is unavailable right now.'),
+      };
     }
 
     // Wire contract is validated, not trusted (typed via edge-contract).
@@ -143,13 +192,13 @@ export async function matchProductFromPhoto(
     // 2. Collect all unique product IDs from EVERY part of the response
     //    (main_match, similar_products, AND all_candidates) so every
     //    candidate gets its live product data fetched.
-    const allProductIds: string[] = [];
-    const addId = (id: string) => {
-      if (!allProductIds.includes(id)) allProductIds.push(id);
-    };
+    const productIdSet = new Set<string>();
+    const addId = (id: string) => productIdSet.add(id);
     if (response.main_match) addId(response.main_match.product_id);
     for (const s of response.similar_products) addId(s.product_id);
     for (const c of response.all_candidates) addId(c.product_id);
+
+    const allProductIds = [...productIdSet];
 
     if (allProductIds.length === 0) {
       return { ok: true, data: noMatch(thresholds) };

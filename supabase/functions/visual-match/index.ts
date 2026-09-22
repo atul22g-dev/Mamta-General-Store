@@ -3,10 +3,13 @@
  *
  * Flow (the AI NEVER touches prices):
  *   user photo (base64 data URI)
- *     → embedding via the configured provider (see _shared/embedding.ts:
- *       Cohere embed-v4.0 by default; MobileCLIP-S0 ONNX when opted in)
+ *     → descriptor via the configured provider (see _shared/embedding.ts:
+ *       the pure-JS image descriptor — free, no API key, no model download)
  *     → validate embedding dimensions + finite values
- *     → pgvector cosine similarity over product_images.embedding
+ *     → pgvector cosine over product_images.embedding as a CANDIDATE FILTER
+ *     → re-score each candidate on shape and colour separately, keeping the
+ *       weaker signal (see compareDescriptors) — a summed cosine lets a
+ *       correct outline pay for a wrong colour, and vice versa
  *     → group results by product (best score per product)
  *     → determine main match (above MAIN_MATCH_THRESHOLD)
  *     → determine similar products (above SIMILAR_PRODUCT_THRESHOLD)
@@ -19,22 +22,44 @@
  * session JWTs are both accepted — see the gate in the request handler.
  *
  * Configurable (set via supabase secrets):
- *   - EMBEDDING_PROVIDER ('cohere' default | 'mobileclip-s0')
- *   - MAIN_MATCH_THRESHOLD (default: 0.90)
- *   - SIMILAR_PRODUCT_THRESHOLD (default: 0.75)
+ *   - MAIN_MATCH_THRESHOLD (default: 0.70)
+ *   - SIMILAR_PRODUCT_THRESHOLD (default: 0.55)
  *   - AMBIGUOUS_MARGIN (default: 0.03)
  *   - EDGE_CANDIDATE_LIMIT (default: 20)
+ *   - EDGE_CANDIDATE_COSINE_FLOOR (default: 0.30)
  */
 import { getEmbeddingProvider, EMBEDDING_DIMENSIONS, validateEmbeddingVector } from '../_shared/embedding.ts';
+import { compareDescriptors } from '../_shared/embedding-engine.ts';
+
+// STATIC npm specifier — deliberately not `await import('https://esm.sh/…')`.
+// A dynamic import of a REMOTE URL is not fetched into the deployed module
+// graph, so the edge runtime failed at request time with
+// `Module not found: https://esm.sh/@supabase/supabase-js@2` (HTTP 500 on
+// every photo). Static `npm:` specifiers are resolved and bundled at deploy
+// time — the same pattern _shared/embedding-engine.ts already relies on for
+// jpeg-js/pngjs.
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 // ---------------------------------------------------------------------------
 // Configuration from environment secrets
 // ---------------------------------------------------------------------------
 
-const MAIN_MATCH_THRESHOLD = Number(Deno.env.get('MAIN_MATCH_THRESHOLD') ?? '0.90');
-const SIMILAR_PRODUCT_THRESHOLD = Number(Deno.env.get('SIMILAR_PRODUCT_THRESHOLD') ?? '0.75');
+// Keep these in sync with src/lib/visual-match/thresholds.ts, which documents
+// the measured score table they were calibrated from.
+const MAIN_MATCH_THRESHOLD = Number(Deno.env.get('MAIN_MATCH_THRESHOLD') ?? '0.70');
+const SIMILAR_PRODUCT_THRESHOLD = Number(Deno.env.get('SIMILAR_PRODUCT_THRESHOLD') ?? '0.55');
 const AMBIGUOUS_MARGIN = Number(Deno.env.get('AMBIGUOUS_MARGIN') ?? '0.03');
 const EDGE_CANDIDATE_LIMIT = Number(Deno.env.get('EDGE_CANDIDATE_LIMIT') ?? '20');
+
+/**
+ * Retrieval floor for the pgvector cosine, NOT a decision threshold.
+ *
+ * It only decides which candidates reach the two-signal rule below, so it sits
+ * far under both thresholds: filtering candidates on the summed cosine would
+ * throw away photos that the shape/colour rule would happily have matched (a
+ * genuine re-shot with an unusual background is exactly that case).
+ */
+const EDGE_CANDIDATE_COSINE_FLOOR = Number(Deno.env.get('EDGE_CANDIDATE_COSINE_FLOOR') ?? '0.30');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,6 +98,25 @@ interface ProductResult {
   best_similarity: number;
   /** Number of images that matched above the similar threshold. */
   matching_images: number;
+}
+
+/**
+ * pgvector values arrive over PostgREST as a string ("[0.1,0.2,…]"), and as an
+ * array when they come from an RPC. Accept both, and reject anything that is not
+ * a usable vector rather than comparing against garbage.
+ */
+function parseStoredEmbedding(value: unknown): number[] | null {
+  let raw: unknown = value;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(raw)) return null;
+  const vector = raw.map((entry) => (typeof entry === 'number' ? entry : Number.NaN));
+  return vector.every((entry) => Number.isFinite(entry)) ? vector : null;
 }
 
 interface MatchResponse {
@@ -234,54 +278,17 @@ Deno.serve(async (req: Request) => {
   const startTime = Date.now();
 
   try {
-    // --- AuthZ: caller must present the project's publishable key or a valid session JWT ---
-    //
-    // supabase-js v2+ does NOT send the key as the Authorization header for
-    // functions.invoke when using new-format `sb_publishable_…` keys and the
-    // user has no session — the key then travels ONLY in the `apikey`
-    // header. Gating strictly on `Authorization` therefore 401s every
-    // anonymous shop-floor scan (the documented primary flow). Accept both:
-    //   • Authorization: Bearer <publishable key>  → anonymous scan
-    //   • apikey: <publishable key>                → anonymous scan
-    //   • Authorization: Bearer <session JWT>      → validated via auth.getUser
-    // The publishable key is public by design (it ships in the app bundle);
-    // accepting it is key-gateway authentication, not a privilege grant —
-    // the RPC below runs read-only over the public catalog either way.
-    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const authHeader = req.headers.get('Authorization');
-    const bearer = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice('Bearer '.length).trim()
-      : null;
-    const apiKeyHeader = req.headers.get('apikey')?.trim() || null;
-    const presentedKey = bearer ?? apiKeyHeader;
-
-    if (!presentedKey) {
-      return json({ error: 'Authentication required.' }, 401);
-    }
-
-    let resolvedAuthHeader: string;
-    if (ANON_KEY && presentedKey === ANON_KEY) {
-      // Anonymous shop-floor scan (publishable key only).
-      resolvedAuthHeader = `Bearer ${ANON_KEY}`;
-    } else {
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-      const authClient = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        ANON_KEY,
-        { global: { headers: { Authorization: `Bearer ${presentedKey}` } } },
-      );
-      const { error: authError } = await authClient.auth.getUser(presentedKey);
-      if (authError) {
-        return json({ error: 'Invalid or expired session.' }, 401);
-      }
-      resolvedAuthHeader = `Bearer ${presentedKey}`;
-    }
-
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+    // Public shop-floor search: the function is read-only and the database RPC
+    // is explicitly granted to anon/authenticated. Do NOT compare the mobile
+    // publishable key with SUPABASE_ANON_KEY here. Modern Supabase projects
+    // use sb_publishable_* keys, while SUPABASE_ANON_KEY inside the Edge
+    // runtime may still be the legacy JWT-shaped anon key. That comparison
+    // caused valid mobile requests to be rejected as 401.
+    // Supabase's API gateway handles the public API key; this function only
+    // performs read-only catalog search and never exposes service-role data.
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      ANON_KEY,
-      { global: { headers: { Authorization: resolvedAuthHeader } } },
+      Deno.env.get('SUPABASE_ANON_KEY')!,
     );
 
     const { image } = (await req.json()) as MatchRequest;
@@ -296,11 +303,10 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[visual-match] Processing image (${(image.length / 1024).toFixed(0)} KB data URI)`);
 
-    // 1. Embed the user photo with the configured provider (default: Cohere).
+    // 1. Embed the user photo with the configured free MobileCLIP provider.
     // Provider configuration/transport failures are surfaced to the caller
-    // (never flattened into a generic 500): without the REAL reason the
-    // feature is undebuggable — a 500 "Visual matching failed" masked the
-    // missing COHERE_API_KEY in production for this exact reason.
+    // (never flattened into a generic 500): a useful backend error is much
+    // easier to diagnose than a generic "Visual matching failed" message.
     let provider;
     try {
       provider = getEmbeddingProvider();
@@ -336,25 +342,83 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[visual-match] Embedding generated: model=${model} dims=${dimensions} len=${queryVector.length} (${Date.now() - startTime}ms)`);
 
-    // 2. Similarity search in Postgres (pgvector cosine distance)
-    //    Fetch more candidates than needed for better product grouping
+    // 2. Candidate retrieval in Postgres (pgvector cosine distance)
+    //    Fetch more candidates than needed for better product grouping. The
+    //    cosine here is only a RETRIEVAL filter — the decision is made below.
     const { data, error } = await supabase.rpc('visual_search_matches', {
       query_embedding: queryVector,
-      match_threshold: SIMILAR_PRODUCT_THRESHOLD, // Lower threshold to get more candidates
+      match_threshold: EDGE_CANDIDATE_COSINE_FLOOR,
       match_count: EDGE_CANDIDATE_LIMIT,
     });
 
     if (error) {
       console.error(`[visual-match] RPC error: ${error.message} (code=${error.code})`);
-      return json({ error: 'Similarity search failed. Please try again.' }, 500);
+      return json({ error: `Similarity search failed: ${error.message.slice(0, 200)}` }, 500);
     }
 
     const rows = (data ?? []) as { product_id: string; image_id: string; similarity: number }[];
 
     console.log(`[visual-match] RPC returned ${rows.length} image-level candidates (${Date.now() - startTime}ms total)`);
 
+    // 2b. Re-score every candidate on shape and colour separately.
+    //     The cosine above is a weighted SUM, so one aspect can pay for another:
+    //     measured, a green ball scored 0.82 against a yellow ball (its outline
+    //     is identical) and a yellow box 0.82 as well (its colour is identical).
+    //     compareDescriptors keeps the WEAKER signal, so a candidate is only as
+    //     good as its worst aspect — the lookalikes above drop to 0.29 and 0.21
+    //     while a genuine re-shot of the product stays at 0.83–1.00.
+    let candidates = rows;
+    if (rows.length > 0) {
+      const { data: imageData, error: imageError } = await supabase
+        .from('product_images')
+        .select('id, embedding')
+        .in('id', rows.map((row) => row.image_id));
+
+      if (imageError) {
+        console.error(`[visual-match] Candidate re-scoring failed: ${imageError.message}`);
+        return json(
+          { error: `Could not compare candidates: ${imageError.message.slice(0, 200)}` },
+          500,
+        );
+      }
+
+      const storedVectors = new Map<string, number[]>();
+      for (const row of (imageData ?? []) as { id: string; embedding: unknown }[]) {
+        const vector = parseStoredEmbedding(row.embedding);
+        if (vector && vector.length === EMBEDDING_DIMENSIONS) storedVectors.set(row.id, vector);
+      }
+
+      const scored: { row: ImageCandidate; comparison: ReturnType<typeof compareDescriptors> }[] = [];
+      for (const row of rows) {
+        const stored = storedVectors.get(row.image_id);
+        if (!stored) continue; // image deleted mid-search, or an unusable vector
+        scored.push({ row, comparison: compareDescriptors(queryVector, stored) });
+      }
+
+      scored.sort((a, b) => b.comparison.score - a.comparison.score);
+
+      const best = scored[0];
+      if (best) {
+        console.log(
+          `[visual-match] Top candidate ${best.row.image_id}: cosine=${best.row.similarity.toFixed(3)} ` +
+            `shape=${best.comparison.shape.toFixed(3)} colour=${best.comparison.colour.toFixed(3)} ` +
+            `score=${best.comparison.score.toFixed(3)}`,
+        );
+      }
+      const skipped = rows.length - scored.length;
+      if (skipped > 0) {
+        console.warn(`[visual-match] ${skipped} candidate(s) had no usable embedding and were skipped`);
+      }
+
+      candidates = scored.map(({ row, comparison }) => ({
+        product_id: row.product_id,
+        image_id: row.image_id,
+        similarity: comparison.score,
+      }));
+    }
+
     // 3. Group by product and calculate product-level scores
-    const productResults = groupByProduct(rows);
+    const productResults = groupByProduct(candidates);
 
     // 4. Determine main match and similar products
     const { status, confidence, main_match, similar_products } = determineMatch(productResults);
@@ -377,9 +441,10 @@ Deno.serve(async (req: Request) => {
 
     return json(response, 200);
   } catch (error) {
-    console.error(`[visual-match] Unhandled error: ${error instanceof Error ? error.message : error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[visual-match] Unhandled error: ${message}`);
     return json(
-      { error: 'Visual matching failed. Please try again.' },
+      { error: `Visual matching failed: ${message.slice(0, 240)}` },
       500,
     );
   }

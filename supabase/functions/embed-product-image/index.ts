@@ -14,6 +14,10 @@
  */
 import { getEmbeddingProvider } from '../_shared/embedding.ts';
 
+// STATIC npm specifier — see visual-match/index.ts: a dynamic import of a
+// remote URL is absent from the deployed module graph and fails at runtime.
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -55,7 +59,6 @@ Deno.serve(async (req: Request) => {
   try {
     // --- AuthZ: caller must be an authenticated admin/staff ---
     const authHeader = req.headers.get('Authorization') ?? '';
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
 
     const userClient = createClient(
       Deno.env.get('SUPABASE_URL')!,

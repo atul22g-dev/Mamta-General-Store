@@ -43,7 +43,11 @@ export const supabase = {
   storage: {
     from: () => ({
       upload: async () => ({ error: null }),
-      getPublicUrl: () => ({ data: { publicUrl: 'https://mock.storage/test.jpg' } }),
+      // Echoes the requested path so tests can assert WHICH object a caller
+      // resolved to (a fixed URL would hide a wrong-bucket/path bug).
+      getPublicUrl: (objectPath) => ({
+        data: { publicUrl: `https://mock.storage/product-images/${objectPath}` },
+      }),
       remove: async () => ({ error: null }),
     }),
   },

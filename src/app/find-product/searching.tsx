@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,24 +9,18 @@ import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing, Radius } from '@/constants';
+import { Spacing } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { scanSession, matchSession } from '@/lib/scan-session';
 import { matchProductFromPhoto } from '@/lib/visual-match/client';
 import { validateAndConvert } from '@/lib/image-pipeline';
 
-/** The visible stages of a match run, in order. */
 const STAGES = [
   { key: 'prepare', label: 'Reading your photo' },
-  { key: 'embed', label: 'Generating AI embedding' },
+  { key: 'embed', label: 'Generating product embedding' },
   { key: 'search', label: 'Searching the catalog' },
 ] as const;
 
-/**
- * Stage tracker shown while matching runs. The first stage highlights
- * immediately, then each next one lights up on a fixed cadence so the
- * wait communicates progress instead of a silent spinner.
- */
 function StageList() {
   const theme = useTheme();
   const [stageIndex, setStageIndex] = useState(0);
@@ -44,6 +38,7 @@ function StageList() {
         const done = index < stageIndex;
         const active = index === stageIndex;
         const color = done ? theme.success : active ? theme.accent : theme.textTertiary;
+
         return (
           <View key={stage.key} style={styles.stageRow}>
             <View
@@ -73,108 +68,78 @@ function StageList() {
 type Phase = 'working' | 'error';
 
 /**
- * Searching step: converts the captured photo to a data URI and runs the
- * visual-match pipeline (embed → similarity → product IDs → live products
- * with the DB price). Concurrency contract: at most ONE match runs for a
- * mounted screen — the in-flight guard blocks double invocation from
- * StrictMode remounts and retry taps, the AbortController cancels the
- * network work on unmount/cancel, and a runId makes late resolutions of
- * any superseded run harmless (stale results can never reach the result
- * screen). On success, hands the outcome to the result screen via the
- * session store.
+ * One simple job:
+ * photo URI → data URI → visual-match service → result screen.
+ * The request is cancelled automatically when this screen unmounts.
  */
 export default function FindProductSearchingScreen() {
   const router = useRouter();
-
   const [phase, setPhase] = useState<Phase>('working');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const startedRef = useRef(false);
-  const inFlightRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const runIdRef = useRef(0);
+  const [retryKey, setRetryKey] = useState(0);
 
-  useEffect(() => {
-    return () => {
-      // Unmount (or StrictMode remount) cancels the network work; the
-      // runId bump ensures a late resolution still cannot navigate.
-      abortRef.current?.abort();
-      runIdRef.current += 1;
-    };
-  }, []);
-
-  const runMatch = useCallback(async () => {
-    // Duplicate-request guard: a match is already running on this screen.
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-
-    const runId = ++runIdRef.current;
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const shot = scanSession.getShot();
-
-    if (!shot) {
-      if (runId === runIdRef.current) {
-        setPhase('error');
-        setErrorMessage('No captured photo found. Start the scan again.');
+  // Declared as an Effect Event: runMatch is called ONLY from the effect below
+  // (scheduled into a microtask) and must always read the latest state. Effect
+  // Events are deliberately not dependencies, so the effect no longer tears
+  // down and re-subscribes every time this component re-renders.
+  const runMatch = useEffectEvent(
+    async (signal: AbortSignal) => {
+      const shot = scanSession.getShot();
+      if (!shot) {
+        if (!signal.aborted) {
+          setPhase('error');
+          setErrorMessage('No captured photo found. Start the scan again.');
+        }
+        return;
       }
-      inFlightRef.current = false;
-      return;
-    }
 
-    const isStale = () => runId !== runIdRef.current;
-
-    // Validate + convert the captured photo to a data URI for the embedding
-    // engine. validateAndConvert checks file existence, size, and MIME type
-    // before reading bytes, so errors are specific and actionable.
-    let dataUri: string;
-    try {
       const conversion = await validateAndConvert(shot.uri);
       if (!conversion.ok) {
-        if (!isStale()) {
+        if (!signal.aborted) {
           setPhase('error');
           setErrorMessage(conversion.errorMessage);
         }
-        inFlightRef.current = false;
         return;
       }
-      dataUri = conversion.dataUri;
-    } catch {
-      if (!isStale()) {
+
+      const result = await matchProductFromPhoto(conversion.dataUri, signal);
+      if (signal.aborted) return;
+
+      if (!result.ok) {
         setPhase('error');
-        setErrorMessage('Could not read the captured photo. Try again.');
+        setErrorMessage(result.error);
+        return;
       }
-      inFlightRef.current = false;
-      return;
-    }
 
-    const result = await matchProductFromPhoto(dataUri, controller.signal);
+      matchSession.setResult(result.data, shot);
+      scanSession.clearShot();
+      router.replace('/find-product/result');
+    },
+  );
 
-    if (isStale()) return; // superseded/cancelled run — touch nothing
-    inFlightRef.current = false;
-
-    if (!result.ok) {
-      setPhase('error');
-      setErrorMessage(result.error);
-      return;
-    }
-
-    matchSession.setResult(result.data, shot);
-    scanSession.clearShot();
-    router.replace('/find-product/result');
-  }, [router]);
-
-  // Run exactly once (React StrictMode/dev remounts double-run effects).
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    void runMatch();
-  }, [runMatch]);
+    const controller = new AbortController();
+    // Kick the job off in a microtask rather than calling it directly: the
+    // no-photo path inside runMatch sets state synchronously, and a
+    // synchronous setState in an effect body triggers cascading renders
+    // (react-hooks/set-state-in-effect). The work still starts immediately
+    // after the current task, and the abort still covers an early unmount.
+    queueMicrotask(() => {
+      void runMatch(controller.signal);
+    });
+    return () => controller.abort();
+    // `retryKey` is the only input that should restart the match; `runMatch` is
+    // an Effect Event and always sees the latest state, so it stays out of the
+    // dependency list on purpose.
+  }, [retryKey]);
 
-  const handleCancel = useCallback(() => {
-    abortRef.current?.abort();
-    runIdRef.current += 1; // late resolutions of this run are inert
-    inFlightRef.current = false;
+  const retry = useCallback(() => {
+    setPhase('working');
+    setErrorMessage(null);
+    setRetryKey((key) => key + 1);
+  }, []);
+
+  const cancel = useCallback(() => {
     scanSession.clearShot();
     router.dismissTo('/(tabs)');
   }, [router]);
@@ -192,10 +157,7 @@ export default function FindProductSearchingScreen() {
             <ErrorState
               title="Couldn’t complete the match"
               description={errorMessage ?? 'Unknown error.'}
-              onRetry={() => {
-                setPhase('working');
-                void runMatch();
-              }}
+              onRetry={retry}
               retryLabel="Try again"
               style={styles.errorPanel}
             />
@@ -206,7 +168,7 @@ export default function FindProductSearchingScreen() {
                 router.push('/find-product/search');
               }}
             />
-            <Button title="Cancel" variant="secondary" onPress={handleCancel} />
+            <Button title="Cancel" variant="secondary" onPress={cancel} />
           </View>
         )}
       </SafeAreaView>
@@ -215,12 +177,8 @@ export default function FindProductSearchingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  flex: { flex: 1 },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -228,24 +186,15 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     padding: Spacing.four,
   },
-  stageList: {
-    gap: Spacing.two,
-    alignSelf: 'flex-start',
-  },
-  stageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
+  stageList: { gap: Spacing.two, alignSelf: 'flex-start' },
+  stageRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   stageDot: {
-    width: 22,
-    height: 22,
-    borderRadius: Radius.full,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stageLabel: {},
-  errorPanel: {
-    alignSelf: 'stretch',
-  },
+  stageLabel: { flexShrink: 1 },
+  errorPanel: { marginBottom: Spacing.two },
 });

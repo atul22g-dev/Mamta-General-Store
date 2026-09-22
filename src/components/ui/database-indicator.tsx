@@ -25,10 +25,44 @@ type DatabaseIndicatorProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-const LABELS: Record<DatabaseHealthStatus, string> = {
-  checking: 'Checking…',
-  online: 'Database connected',
-  offline: 'Database offline',
+/**
+ * Per-status presentation, in ONE table.
+ *
+ * These used to be three parallel ternary chains (foreground colour, soft
+ * background, icon) plus a separate label map, all of which had to be kept in
+ * sync by hand — adding a status meant editing four places, and a mismatch was
+ * a silent visual bug rather than a type error. Now the status is looked up
+ * once and each field has exactly one definition.
+ */
+const STATUS: Record<
+  DatabaseHealthStatus,
+  {
+    label: string;
+    icon: 'checkmark-circle' | 'close-circle' | 'sync-circle';
+    /** Theme key for the foreground colour. */
+    tone: 'success' | 'warning' | 'error';
+    /** Theme key for the matching soft background. */
+    softTone: 'successSoft' | 'warningSoft' | 'errorSoft';
+  }
+> = {
+  checking: {
+    label: 'Checking…',
+    icon: 'sync-circle',
+    tone: 'warning',
+    softTone: 'warningSoft',
+  },
+  online: {
+    label: 'Database connected',
+    icon: 'checkmark-circle',
+    tone: 'success',
+    softTone: 'successSoft',
+  },
+  offline: {
+    label: 'Database offline',
+    icon: 'close-circle',
+    tone: 'error',
+    softTone: 'errorSoft',
+  },
 };
 
 /** Round-trip time → compact label. Calibrated for a Supabase round trip. */
@@ -38,10 +72,44 @@ function latencyLabel(ms: number | null | undefined): string | null {
 }
 
 /**
+ * Status dot with its live "ping" ring, which pulses while the database is
+ * reachable. Owns the ambient animation so the pill above stays a plain layout
+ * component (compiler-safe shared-value accessors: .set/.get).
+ */
+function StatusDot({ color, pinging }: { color: string; pinging: boolean }) {
+  const ping = useSharedValue(0);
+
+  useEffect(() => {
+    if (pinging) {
+      ping.set(
+        withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }), -1, false),
+      );
+    } else {
+      ping.set(0);
+    }
+  }, [ping, pinging]);
+
+  const pingStyle = useAnimatedStyle(() => ({
+    opacity: (1 - ping.get()) * 0.5,
+    transform: [{ scale: 1 + ping.get() * 1.6 }],
+  }));
+
+  return (
+    <View style={styles.dotWrap}>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.pingRing, pingStyle, { borderColor: color }]}
+      />
+      <View style={[styles.dot, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+/**
  * Connection status pill for the database — modern status-page styling:
  * a colored status dot with a soft live "ping" ring while online, a
  * hairline tinted border, and the latency in its own tinted segment.
- * Table-driven per state: status → (color, soft background, label).
+ * Presentation is looked up from STATUS: status → (label, icon, tones).
  * Used on the admin dashboard and the Settings "About" group so staff can
  * see at a glance whether the store server is reachable.
  */
@@ -53,36 +121,11 @@ export function DatabaseIndicator({
   style,
 }: DatabaseIndicatorProps) {
   const theme = useTheme();
-
-  const color =
-    status === 'online' ? theme.success : status === 'offline' ? theme.error : theme.warning;
-  const soft =
-    status === 'online' ? theme.successSoft : status === 'offline' ? theme.errorSoft : theme.warningSoft;
-  const icon: 'checkmark-circle' | 'close-circle' | 'sync-circle' = status === 'online'
-    ? 'checkmark-circle'
-    : status === 'offline'
-      ? 'close-circle'
-      : 'sync-circle';
-
-  const quality = status === 'online' ? latencyLabel(latencyMs) : null;
-
-  // Live ping: a fading ring emitted from the dot while online. Ambient
-  // loop via compiler-safe shared-value accessors (.set/.get).
-  const ping = useSharedValue(0);
-  useEffect(() => {
-    if (status === 'online') {
-      ping.set(
-        withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.quad) }), -1, false),
-      );
-    } else {
-      ping.set(0);
-    }
-  }, [ping, status]);
-
-  const pingStyle = useAnimatedStyle(() => ({
-    opacity: (1 - ping.get()) * 0.5,
-    transform: [{ scale: 1 + ping.get() * 1.6 }],
-  }));
+  const { label, icon, tone, softTone } = STATUS[status];
+  const color = theme[tone];
+  const soft = theme[softTone];
+  const online = status === 'online';
+  const quality = online ? latencyLabel(latencyMs) : null;
 
   const press = useSharedValue(1);
   const pressStyle = useAnimatedStyle(() => ({
@@ -93,21 +136,14 @@ export function DatabaseIndicator({
     <Animated.View
       style={[
         pressStyle,
-        styles.pill,
-        { backgroundColor: soft, borderColor: `${color}33` },
-        status === 'online' && Shadows.sm,
+        styles.pill,        {backgroundColor: soft, borderColor: `${color}33` },
+        online && Shadows.sm,
         style,
       ]}>
-      <View style={styles.dotWrap}>
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.pingRing, pingStyle, { borderColor: color }]}
-        />
-        <View style={[styles.dot, { backgroundColor: color }]} />
-      </View>
+      <StatusDot color={color} pinging={online} />
       {labeled && (
         <ThemedText type="caption" style={[styles.label, { color }]}>
-          {LABELS[status]}
+          {label}
         </ThemedText>
       )}
       {quality && (
@@ -117,11 +153,11 @@ export function DatabaseIndicator({
           </ThemedText>
         </View>
       )}
-      {status !== 'online' && <Icon name={icon} size={13} color={color} />}
+      {!online && <Icon name={icon} size={13} color={color} />}
     </Animated.View>
   );
 
-  const accessibility = `${LABELS[status]}${quality ? `, ${quality}` : ''}`;
+  const accessibility = `${label}${quality ? `, ${quality}` : ''}`;
 
   if (onPress) {
     return (

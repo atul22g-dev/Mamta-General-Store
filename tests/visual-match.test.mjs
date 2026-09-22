@@ -83,6 +83,34 @@ test('correct product: single candidate ≥ threshold → auto-match (kind: sing
   assert.equal(result.showCandidates, false);
 });
 
+test('main match that is ALSO the only candidate → single, not "Product not found"', () => {
+  // The real client EXCLUDES the main product from similar_products and
+  // all_candidates (it dedupes them), so a one-product catalog produces a
+  // confident match with every candidate list EMPTY. Treating that as
+  // "nothing found" reported a confidence-1.000 match as a failure — this is
+  // the shape of the request that used to show "Product not found".
+  const c = candidate('only', 0.9999);
+  const outcome = buildOutcome({
+    mainMatch: c,
+    similarProducts: [],
+    allCandidates: [],
+    confidence: 0.9999,
+  });
+  const result = analyzeMatchOutcome(outcome);
+  assert.equal(result.kind, 'single');
+  assert.equal(result.showCandidates, false);
+});
+
+test('below-threshold match with candidates only in all_candidates → ambiguous (list offered)', () => {
+  // status 'uncertain' means there is something for the user to choose from;
+  // it must never render as the empty "not found" state.
+  const c = candidate('p9', 0.6);
+  const outcome = buildOutcome({ allCandidates: [c], confidence: 0.6, status: 'uncertain' });
+  const result = analyzeMatchOutcome(outcome);
+  assert.equal(result.kind, 'ambiguous');
+  assert.equal(result.showCandidates, true);
+});
+
 test('similar product below threshold → NOT auto-selected (ambiguous with candidates)', () => {
   const c = candidate('p2', 0.74);
   const outcome = buildOutcome({ similarProducts: [c], allCandidates: [c], confidence: 0.74, status: 'uncertain' });

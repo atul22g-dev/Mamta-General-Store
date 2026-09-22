@@ -17,6 +17,14 @@ export const Shadows = {
   lg: {
     boxShadow: '0 2px 4px 0 rgba(15, 23, 42, 0.04), 0 16px 40px 0 rgba(15, 23, 42, 0.14)',
   },
+  /**
+   * Hero elevation — the single most important surface on a screen (the
+   * matched product, the scan CTA). Deep and soft, so it reads as floating
+   * above the page rather than outlined on it.
+   */
+  xl: {
+    boxShadow: '0 4px 12px 0 rgba(15, 23, 42, 0.06), 0 28px 60px 0 rgba(15, 23, 42, 0.18)',
+  },
 } as const;
 
 export type ShadowKey = keyof typeof Shadows;

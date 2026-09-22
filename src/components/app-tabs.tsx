@@ -43,12 +43,14 @@ function TabButton({ icon, label, isFocused, ...props }: TabButtonProps & TabTri
     ]}>
       {/* Explicit theme colors — 'currentColor' is a CSS-only value and does
           not resolve on native, which left the glyphs invisible on Android. */}
+      {/* accentDark is the readable-on-surface accent in both schemes (see
+          the web tab bar for the contrast numbers behind this choice). */}
       <Icon
         name={icon}
         size={22}
-        color={isFocused ? theme.accent : theme.textSecondary}
+        color={isFocused ? theme.accentDark : theme.textSecondary}
       />
-      <ThemedText type="smallBold" themeColor={isFocused ? 'accent' : 'textSecondary'}>
+      <ThemedText type="smallBold" style={{ color: isFocused ? theme.accentDark : theme.textSecondary }}>
         {label}
       </ThemedText>
     </Pressable>

@@ -24,7 +24,7 @@ import { alert } from '@/lib/alert';
 export default function AdminLoginScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { signIn, status, isAdmin } = useAuth();
+  const { signIn, status, isAdmin, authNotice, clearAuthNotice } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,6 +32,12 @@ export default function AdminLoginScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [repairNeeded, setRepairNeeded] = useState(false);
+
+  // The credentials were correct but the account has no store profile row,
+  // so the provider ended the session. Explaining that here is the whole
+  // point: previously the screen silently remounted and sign-in looked
+  // broken with nothing to act on.
+  const profileMissing = authNotice?.kind === 'profile-missing';
 
   const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canSubmit = emailIsValid && password.length >= 6 && !submitting;
@@ -42,6 +48,22 @@ export default function AdminLoginScreen() {
   if (status === 'authenticated' && isAdmin) {
     return <Redirect href="/admin" />;
   }
+
+  /** Opens the project's SQL Editor, where the setup SQL must be pasted. */
+  const openSqlEditor = () => {
+    const ref = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
+      .replace('https://', '')
+      .split('.')[0];
+    // openURL rejects when no handler exists (e.g. no browser registered) —
+    // an unhandled rejection here would crash the app in dev and warn in
+    // production.
+    Linking.openURL(`https://supabase.com/dashboard/project/${ref}/sql/new`).catch(() => {
+      alert(
+        'Could not open the browser',
+        'Open supabase.com/dashboard in your browser and go to the SQL Editor manually.',
+      );
+    });
+  };
 
   const handleSignIn = async () => {
     if (!canSubmit) return;
@@ -111,6 +133,9 @@ export default function AdminLoginScreen() {
                 setEmail(text);
                 setError(null);
                 setRepairNeeded(false);
+                // A different account is being tried — the previous
+                // account's setup notice no longer applies.
+                clearAuthNotice();
               }}
             />
             <Input
@@ -125,6 +150,7 @@ export default function AdminLoginScreen() {
                 setPassword(text);
                 setError(null);
                 setRepairNeeded(false);
+                clearAuthNotice();
               }}
               rightIcon={
                 <IconButton
@@ -142,6 +168,40 @@ export default function AdminLoginScreen() {
                 />
               }
             />
+
+            {profileMissing && (
+              <View
+                accessibilityRole="alert"
+                style={[
+                  styles.repairPanel,
+                  { backgroundColor: theme.warningSoft, borderColor: theme.warning },
+                ]}>
+                <View style={styles.noticeHead}>
+                  <Icon name="alert-circle" size={16} color={theme.warning} />
+                  <ThemedText type="smallBold">This account isn’t set up yet</ThemedText>
+                </View>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  Your email and password were accepted, but this account has no store
+                  profile — so it has no role and the admin area stays locked. Finish the
+                  setup, then sign in again.
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'1. Open supabase/create-admin-user.sql in this project'}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'2. Set its ▼ EDIT ME email to your admin email, paste it into the Supabase SQL Editor and Run it'}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.repairStep}>
+                  {'3. Come back here and sign in again'}
+                </ThemedText>
+                <Button
+                  title="Open Supabase SQL Editor"
+                  size="sm"
+                  variant="secondary"
+                  onPress={openSqlEditor}
+                />
+              </View>
+            )}
 
             {error && (
               <View style={[styles.errorRow, { backgroundColor: theme.errorSoft }]}>
@@ -171,22 +231,7 @@ export default function AdminLoginScreen() {
                   title="Open Supabase SQL Editor"
                   size="sm"
                   variant="secondary"
-                  onPress={() => {
-                    const ref = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '')
-                      .replace('https://', '')
-                      .split('.')[0];
-                    // openURL rejects when no handler exists (e.g. no browser
-                    // registered) — an unhandled rejection here would crash
-                    // the app in dev and warn in production.
-                    Linking.openURL(
-                      `https://supabase.com/dashboard/project/${ref}/sql/new`,
-                    ).catch(() => {
-                      alert(
-                        'Could not open the browser',
-                        'Open supabase.com/dashboard in your browser and go to the SQL Editor manually.',
-                      );
-                    });
-                  }}
+                  onPress={openSqlEditor}
                 />
               </View>
             )}
@@ -252,5 +297,10 @@ const styles = StyleSheet.create({
   },
   repairStep: {
     alignSelf: 'stretch',
+  },
+  noticeHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
 });
