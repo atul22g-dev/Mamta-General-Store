@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { IconButton } from '@/components/ui/icon-button';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -134,12 +135,22 @@ export default function AdminProductsScreen() {
                 Manage your store catalog
               </ThemedText>
             </View>
-            <Button
-              title="Add Product"
-              size="sm"
-              icon={<Icon name="add" size={18} color={theme.white} />}
-              onPress={() => router.push('/admin/products/add')}
-            />
+            <View style={styles.headerActions}>
+              {/* Bulk catalog work lives one tap away, next to search, because
+                  importing a spreadsheet is the other way products get in.
+                  Icon-only so the header still fits a small phone. */}
+              <IconButton
+                accessibilityLabel="Export or import products"
+                icon={<Icon name="swap-vertical" size={18} color={theme.accent} />}
+                onPress={() => router.push('/admin/products/transfer')}
+              />
+              <Button
+                title="Add Product"
+                size="sm"
+                icon={<Icon name="add" size={18} color={theme.white} />}
+                onPress={() => router.push('/admin/products/add')}
+              />
+            </View>
           </View>
 
           {/* Search */}
@@ -258,6 +269,11 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     gap: Spacing.one / 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   listContent: {
     paddingHorizontal: Spacing.four,

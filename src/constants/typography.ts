@@ -3,17 +3,17 @@ import { Fonts } from '@/constants/theme';
 
 export const Typography = StyleSheet.create({
   display: {
-    fontSize: 34,
-    lineHeight: 42,
+    fontSize: 36,
+    lineHeight: 44,
     fontWeight: '800',
-    letterSpacing: -0.8,
+    letterSpacing: -0.9,
     fontFamily: Platform.select({ ios: Fonts?.sans, default: Fonts?.sans }),
   },
   h1: {
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 30,
+    lineHeight: 38,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     fontFamily: Platform.select({ ios: Fonts?.sans, default: Fonts?.sans }),
   },
   h2: {

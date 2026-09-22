@@ -22,7 +22,12 @@ export function getProductImageUrl(imageUrl: string | null | undefined): string 
   // Data/blob URIs (previews, tests) — pass through untouched.
   if (/^(data|blob|file):/i.test(trimmed)) return trimmed;
 
-  // Otherwise treat it as a path inside the product-images bucket.
-  const { data } = supabase.storage.from('product-images').getPublicUrl(trimmed);
+  // Otherwise treat it as a path inside the product-images bucket. Leading
+  // slashes are stripped: SQL/script-inserted rows often carry '/<product>/…'
+  // and the bucket URL builder would turn that into a literal '//' segment,
+  // which 404s and shows up as a blank image.
+  const path = trimmed.replace(/^\/+/, '');
+  if (path === '') return null;
+  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
   return data.publicUrl ?? null;
 }

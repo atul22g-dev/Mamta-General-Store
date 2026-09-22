@@ -35,6 +35,14 @@ export const Colors = {
     errorSoft: '#FEE2E2',
     white: '#ffffff',
     black: '#000000',
+    /**
+     * Photo-overlay scrim: a near-opaque slate used behind white text that
+     * sits ON TOP of a product photo. A tinted token would be unreadable over
+     * an arbitrary image, so this one is deliberately theme-independent —
+     * white on it clears 12:1 whatever is underneath.
+     */
+    scrim: 'rgba(2, 6, 23, 0.78)',
+    scrimSoft: 'rgba(2, 6, 23, 0.55)',
   },
   dark: {
     text: '#ECF3F0',
@@ -61,6 +69,9 @@ export const Colors = {
     errorSoft: '#3B1414',
     white: '#ffffff',
     black: '#000000',
+    /** Same photo scrim in both themes — see the light palette note. */
+    scrim: 'rgba(2, 6, 23, 0.78)',
+    scrimSoft: 'rgba(2, 6, 23, 0.55)',
   },
 } as const;
 

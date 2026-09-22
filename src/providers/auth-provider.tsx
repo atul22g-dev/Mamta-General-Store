@@ -16,6 +16,18 @@ const PGRST_JWT_INVALID = 'PGRST301';
 
 type SignInResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Why the last session ended — surfaced to the login screen so a failure is
+ * never silent.
+ *
+ * 'profile-missing': the credentials were accepted (a real session was
+ * issued) but `profiles` has no row for that user id, so the session maps to
+ * no store role. The app cannot authorize anything, so it ends the session —
+ * but only THIS case needs the user told, otherwise sign-in looks like it
+ * "did nothing".
+ */
+export type AuthNotice = { kind: 'profile-missing' };
+
 type AuthContextValue = {
   /** Current Supabase session (null when signed out). */
   session: Session | null;
@@ -32,6 +44,14 @@ type AuthContextValue = {
   profileUnavailable: boolean;
   /** Re-runs the profile fetch (used after a network failure). */
   retryProfile: () => void;
+  /**
+   * Why the previous session ended, or null. Currently only the
+   * "signed in but no store profile" case; the login screen renders the
+   * matching repair instructions from it.
+   */
+  authNotice: AuthNotice | null;
+  /** Dismisses `authNotice` (called when the user edits the form). */
+  clearAuthNotice: () => void;
   signIn: (email: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
 };
@@ -43,6 +63,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [profileUnavailable, setProfileUnavailable] = useState(false);
+  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
+
+  const clearAuthNotice = useCallback(() => setAuthNotice(null), []);
 
   /** Monotonic guard: stale profile resolutions never clobber newer state. */
   const loadIdRef = useRef(0);
@@ -75,7 +98,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
    * Error handling is branched by KIND — this was the root cause of the
    * startup-logout bug: a transient network failure used to be treated
    * identically to a missing row and destroyed valid sessions. Now:
-   *   missing row      → sign out (the session identifies no user)
+   *   missing row      → sign out + raise an actionable notice (the session
+   *                      identifies no user, and staying quiet about it made
+   *                      sign-in look broken)
    *   network failure  → keep the session, surface a retryable state
    *   server error     → keep the session, surface a retryable state
    * A monotonic load id makes late responses from superseded loads
@@ -122,6 +147,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
           // Definitive "no profile row": the session identifies nobody.
           // forceSignOut clears all state; the SIGNED_OUT event that follows
           // keeps the guard layout redirecting to /admin/login.
+          //
+          // The notice is set FIRST and survives resetToSignedOut (which
+          // deliberately does not touch it): without it, the login screen
+          // remounts blank and the user sees sign-in "do nothing", with no
+          // hint that the account needs its profile row repairing.
+          setAuthNotice({ kind: 'profile-missing' });
           await forceSignOut();
           return;
         }
@@ -174,6 +205,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [loadProfile, resetToSignedOut]);
 
   const signIn = useCallback<AuthContextValue['signIn']>(async (email, password) => {
+    // A fresh attempt supersedes any previous failure explanation.
+    setAuthNotice(null);
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
@@ -184,6 +217,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Deliberate sign-out is not a failure — never leave a repair notice
+    // behind for the next visit to the login screen.
+    setAuthNotice(null);
     await supabase.auth.signOut();
     // onAuthStateChange(SIGNED_OUT) clears session + profile via
     // resetToSignedOut, which also invalidates any in-flight profile load.
@@ -201,10 +237,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isAdmin: profile?.role === 'admin',
       profileUnavailable,
       retryProfile,
+      authNotice,
+      clearAuthNotice,
       signIn,
       signOut,
     }),
-    [session, profile, status, profileUnavailable, retryProfile, signIn, signOut],
+    [
+      session,
+      profile,
+      status,
+      profileUnavailable,
+      retryProfile,
+      authNotice,
+      clearAuthNotice,
+      signIn,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

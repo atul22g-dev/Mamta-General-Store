@@ -142,9 +142,11 @@ export default function AdminDashboardScreen() {
                       variant: 'secondary' as const,
                     },
                     {
-                      title: 'Add Staff',
-                      icon: 'person-add' as const,
-                      href: '/admin/staff' as const,
+                      // Bulk catalog work: export to a spreadsheet, edit, and
+                      // import the file back (see products/transfer.tsx).
+                      title: 'Export / Import',
+                      icon: 'swap-vertical' as const,
+                      href: '/admin/products/transfer' as const,
                       variant: 'soft' as const,
                     },
                   ] as const

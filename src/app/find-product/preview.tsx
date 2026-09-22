@@ -84,8 +84,14 @@ export default function FindProductPreviewScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeInDown.duration(300)} style={[styles.photoWrap, Shadows.md]}>
-            <Image source={{ uri: shot.uri }} style={styles.photo} />
+          <Animated.View entering={FadeInDown.duration(300)} style={[styles.photoWrap, Shadows.lg]}>
+            <Image
+              source={{ uri: shot.uri }}
+              style={[
+                styles.photo,
+                { borderColor: theme.border, backgroundColor: theme.surfaceSecondary },
+              ]}
+            />
           </Animated.View>
 
           <View style={styles.metaRow}>
@@ -164,8 +170,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     aspectRatio: 3 / 4,
-    borderRadius: Radius.lg,
-    backgroundColor: 'rgba(100,116,139,0.12)',
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    // Border + placeholder are themed at the call site.
   },
   metaRow: {
     flexDirection: 'row',

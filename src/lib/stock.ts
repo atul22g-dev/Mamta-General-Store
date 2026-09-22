@@ -39,7 +39,9 @@ export function stockTone(stock: number): StockTone {
 export function stockLabel(stock: number, options: { withCount?: boolean } = {}): string {
   const { withCount = false } = options;
   const level = stockLevel(stock);
-  if (level === 'out') return withCount && stock > 0 ? 'Out of stock · 1' : 'Out of stock';
+  // The count comes from `stock`, never a literal: with the boundary moved
+  // (e.g. OUT_OF_STOCK_MAX = 2) a hardcoded '1' would misreport every count.
+  if (level === 'out') return withCount && stock > 0 ? `Out of stock · ${stock}` : 'Out of stock';
   if (level === 'low') return withCount ? `Low stock · ${stock}` : 'Low stock';
   return withCount ? `In stock · ${stock}` : 'In stock';
 }

@@ -30,7 +30,8 @@
           "image": "./assets/images/play_store_512.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

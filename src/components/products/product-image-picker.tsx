@@ -125,7 +125,10 @@ export function ProductImagePicker({
         <View style={styles.previewRow}>
           {images.map((image) => (
             <View key={image.id} style={styles.previewTile}>
-              <Image source={{ uri: image.uri }} style={styles.previewImage} />
+              <Image
+                source={{ uri: image.uri }}
+                style={[styles.previewImage, { backgroundColor: theme.surfaceSecondary }]}
+              />
               {!disabled && (
                 <Pressable
                   accessibilityRole="button"
@@ -207,7 +210,7 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: 'rgba(100,116,139,0.15)',
+    // Placeholder is themed at the call site (see previewImage usage).
   },
   removeButton: {
     position: 'absolute',

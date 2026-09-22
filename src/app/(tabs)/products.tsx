@@ -1,10 +1,4 @@
-import {
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -16,7 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Typography } from '@/constants';
+import { MaxContentWidth, WebTopBarInset, Spacing, Radius, Shadows, Typography } from '@/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useProductSearch } from '@/hooks/use-product-search';
 import { formatPriceWithUnit } from '@/lib/format';
@@ -30,10 +24,13 @@ import {
 } from '@/lib/products/product-validation';
 import { matchSession } from '@/lib/scan-session';
 import type { ProductWithImages } from '@/lib/products/product-service';
-import { getProductImageUrl } from '@/lib/products/get-product-image-url';
+import { ProductThumb } from '@/components/products/product-thumb';
 
 /** Chip-row filter values: the implicit "All" filter + every category. */
 const CHIP_FILTERS: ('all' | ProductCategory)[] = ['all', ...PRODUCT_CATEGORIES];
+
+/** Catalog card thumbnail size (was an inline 72×72 style). */
+const CARD_THUMB = 72;
 
 /** Vertical gap between catalog cards (FlatList separator). */
 function RowSeparator() {
@@ -51,7 +48,6 @@ function CatalogCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
-  const firstImage = getProductImageUrl(product.product_images[0]?.image_url);
 
   return (
     <Animated.View entering={FadeInDown.duration(280).delay(Math.min(index, 8) * 45)}>
@@ -59,20 +55,18 @@ function CatalogCard({
         accessibilityRole="button"
         accessibilityLabel={`${product.name}, ${formatPriceWithUnit(product.selling_price, product.unit)}`}
         onPress={onPress}
-        style={({ pressed }) => [
+        style={({ pressed, hovered }) => [
           styles.card,
           { backgroundColor: theme.surface, borderColor: theme.border },
+          Shadows.sm,
+          hovered && !pressed && { borderColor: theme.accent },
           pressed && styles.cardPressed,
         ]}>
-        {firstImage ? (
-          <Image source={{ uri: firstImage }} style={styles.cardThumb} />
-        ) : (
-          <View style={[styles.cardThumb, styles.cardThumbFallback]}>
-            <ThemedText type="h3" style={{ color: theme.accent }}>
-              {product.name.charAt(0).toUpperCase()}
-            </ThemedText>
-          </View>
-        )}
+        <ProductThumb
+          imageUrl={product.product_images[0]?.image_url}
+          name={product.name}
+          size={CARD_THUMB}
+        />
 
         <View style={styles.cardInfo}>
           <ThemedText type="body" numberOfLines={1}>
@@ -233,18 +227,20 @@ function Chip({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: active ? theme.accent : theme.surface,
-          borderColor: active ? theme.accent : theme.border,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}>
+      accessibilityState={{ selected: active }}        style={({ pressed }) => [
+          styles.chip,
+          {
+            // Selected = soft accent fill + accent outline. A solid accent
+            // fill would leave the 12px label below 4.5:1 in light mode;
+            // this pairing is readable in both schemes.
+            backgroundColor: active ? theme.accentSoft : theme.surface,
+            borderColor: active ? theme.accent : theme.border,
+            opacity: pressed ? 0.8 : 1,
+          },
+        ]}>
       <ThemedText
         type="caption"
-        style={{ color: active ? theme.white : theme.textSecondary }}>
+        style={{ color: active ? theme.accentDark : theme.textSecondary }}>
         {label}
       </ThemedText>
     </Pressable>
@@ -308,16 +304,6 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
-  },
-  cardThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(100,116,139,0.12)',
-  },
-  cardThumbFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardInfo: {
     flex: 1,

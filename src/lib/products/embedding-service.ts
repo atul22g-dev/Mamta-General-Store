@@ -83,9 +83,34 @@ export async function generateProductEmbedding(
   const validationError = validateProductId(productId);
   if (validationError) return validationError;
 
+  return invokeEmbed(productId, limit);
+}
+
+/**
+ * Embeds EVERY image that has no embedding yet, regardless of product.
+ *
+ * Used by the admin export/import screen after a bulk import: an imported
+ * product can arrive with a photo link rather than an upload, so there is no
+ * "the admin just touched this product" moment to hang an embedding call off.
+ * The function itself only ever looks at rows where `embedding is null`, so
+ * calling it here can never recompute or corrupt an existing vector.
+ *
+ * @param limit max images per call (the function caps this at 50)
+ */
+export async function backfillProductEmbeddings(
+  limit = 50,
+): Promise<ServiceResult<{ embedded: number; failed: { id: string; error: string }[]; hasEmbedding: boolean }>> {
+  return invokeEmbed(undefined, limit);
+}
+
+/** One place that talks to the embed-product-image function. */
+async function invokeEmbed(
+  productId: string | undefined,
+  limit: number,
+): Promise<ServiceResult<{ embedded: number; failed: { id: string; error: string }[]; hasEmbedding: boolean }>> {
   try {
     const { data, error } = await supabase.functions.invoke('embed-product-image', {
-      body: { product_id: productId, limit },
+      body: productId ? { product_id: productId, limit } : { limit },
     });
 
     if (error) {

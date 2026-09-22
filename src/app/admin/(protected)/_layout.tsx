@@ -25,8 +25,8 @@ import { useAuth } from '@/hooks/use-auth';
  *   1. this layout (direct deep links to /admin/** never render content)
  *   2. Postgres RLS (products/images writes are admin-only; profile role
  *      changes are impossible for the row owner — see supabase/migrations)
- *   3. the create-staff edge function (re-verifies the admin role server-side
- *      before using the service-role key)
+ *   3. the edge functions (they re-verify the caller's admin role server-side
+ *      before doing anything with elevated privileges)
  */
 export default function ProtectedAdminLayout() {
   const { status, isAdmin, profile, profileUnavailable, retryProfile, signOut } = useAuth();
@@ -71,7 +71,6 @@ export default function ProtectedAdminLayout() {
       <Stack.Screen name="products/add" />
       <Stack.Screen name="products/[id]" />
       <Stack.Screen name="products/[id]/edit" />
-      <Stack.Screen name="staff" />
     </Stack>
   );
 }
